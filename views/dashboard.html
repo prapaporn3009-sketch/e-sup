@@ -1,0 +1,3297 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <link rel="manifest" href="../assets/manifest.json">
+    <link rel="apple-touch-icon" href="../assets/img/app-icon.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบบันทึกการนิเทศการสอน</title>
+    <link rel="icon" type="image/png" id="school-logo-favicon" href="">
+
+    <!-- Configuration & Session Helper -->
+    <script src="../assets/js/config.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="../assets/js/tailwind.config.js"></script>
+    
+    <!-- Pass User Role to JavaScript and Setup Global Helpers -->
+    <script>
+        // ตรวจสอบและดึงข้อมูลเซสชันความปลอดภัยหน้าบ้าน
+        const user = checkAuth(); // จะ Redirect อัตโนมัติถ้าไม่ได้ล็อกอิน
+        window.userRole = user ? user.role : 'teacher';
+        window.userDisplayName = user ? user.display_name : '';
+        window.userUsername = user ? user.username : '';
+        window.userEmail = user ? user.email : '';
+        window.userId = user ? user.id : '';
+        window.userPosition = user ? user.position : 'ครู';
+        window.evaluationCriteria = [];
+
+        // XSS Prevention Helper
+        function escapeHTML(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag])
+            );
+        }
+
+        // Thai Date Formatter Helper
+        function formatDateThai(dateStr) {
+            if (!dateStr || dateStr === '-') return '-';
+            if (typeof dateStr === 'string' && (dateStr.includes('ม.ค.') || dateStr.includes('มกราคม') || dateStr.includes('พ.ศ.'))) {
+                return dateStr;
+            }
+            
+            let date;
+            if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
+                const [y, m, d] = dateStr.trim().split('-').map(Number);
+                date = new Date(y, m - 1, d);
+            } else {
+                date = new Date(dateStr);
+            }
+            
+            if (isNaN(date.getTime())) return dateStr;
+
+            const thaiMonthsFull = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            const day = date.getDate();
+            const month = thaiMonthsFull[date.getMonth()];
+            const year = date.getFullYear() + 543;
+            
+            return `${day} ${month} ${year}`;
+        }
+
+        // Thai Date Time Formatter Helper (สำหรับ Logs และข้อมูลที่มีเวลา)
+        function formatDateTimeThai(dateStr) {
+            if (!dateStr || dateStr === '-') return '-';
+            if (typeof dateStr === 'string' && dateStr.includes('พ.ศ.')) {
+                return dateStr;
+            }
+            
+            let date;
+            if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
+                const [y, m, d] = dateStr.trim().split('-').map(Number);
+                date = new Date(y, m - 1, d);
+            } else {
+                date = new Date(dateStr);
+            }
+            
+            if (isNaN(date.getTime())) return dateStr;
+
+            const thaiMonthsFull = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            const day = date.getDate();
+            const month = thaiMonthsFull[date.getMonth()];
+            const year = date.getFullYear() + 543;
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            
+            return `${day} ${month} ${year} ${hours}:${minutes}:${seconds} น.`;
+        }
+
+        // Skeleton Loader Helper for Tables
+        function getSkeletonRows(cols, rows = 5) {
+            let html = '';
+            for (let i = 0; i < rows; i++) {
+                html += `<tr class="animate-pulse border-b border-gray-100">`;
+                for (let j = 0; j < cols; j++) {
+                    const widths = ['w-2/3', 'w-1/2', 'w-3/4', 'w-5/6', 'w-full', 'w-11/12'];
+                    const randomWidth = widths[(i + j) % widths.length];
+                    html += `
+                        <td class="px-6 py-4">
+                            <div class="h-4 bg-slate-200 rounded ${randomWidth}"></div>
+                        </td>
+                    `;
+                }
+                html += `</tr>`;
+            }
+            return html;
+        }
+
+        // Global Fetch Interceptor to Route local PHP API requests to Google Apps Script Web App
+        const originalFetch = window.fetch;
+        window.fetch = function() {
+            let [resource, config] = arguments;
+            if (typeof resource === 'string' && resource.includes('../api/')) {
+                if (!GAS_API_URL) {
+                    Swal.fire('แจ้งเตือน', 'กรุณาตั้งค่าคีย์หลังบ้าน GAS_API_URL ในไฟล์ assets/js/config.js', 'error');
+                    return Promise.reject(new Error("Missing GAS_API_URL"));
+                }
+
+                const urlObj = new URL(resource, window.location.href);
+                const action = urlObj.searchParams.get('action');
+                let gasAction = action;
+
+                // แมปปิ้ง Action ระหว่างฝั่ง PHP และฝั่ง Google Apps Script API
+                if (resource.includes('settings.php')) {
+                    if (action === 'save_criteria') gasAction = 'saveSettings';
+                    else if (action === 'get') gasAction = 'getSettings';
+                    else if (action === 'save_general') gasAction = 'saveSettings';
+                } else if (resource.includes('api.php')) {
+                    if (action === 'getConfig') gasAction = 'getSettings'; // evaluation_items เก็บใน settings
+                    else if (action === 'saveConfig') gasAction = 'saveSettings';
+                } else if (resource.includes('user.php')) {
+                    if (action === 'list') gasAction = 'listUsers';
+                    else if (action === 'create') gasAction = 'createUser';
+                    else if (action === 'update') gasAction = 'updateUser';
+                    else if (action === 'delete') gasAction = 'deleteUser';
+                    else if (action === 'bulk_assign_templates') gasAction = 'bulkAssignTemplates';
+                    else if (action === 'change_password') gasAction = 'changePassword';
+                } else if (resource.includes('templates.php')) {
+                    if (action === 'list') gasAction = 'listTemplates';
+                    else if (action === 'get') gasAction = 'getTemplate';
+                    else if (action === 'save') gasAction = 'saveConfig';
+                    else if (action === 'delete') gasAction = 'deleteTemplate';
+                } else if (resource.includes('terms.php')) {
+                    if (action === 'list') gasAction = 'listTerms';
+                    else if (action === 'create') gasAction = 'createTerm';
+                    else if (action === 'set_active') gasAction = 'setTermActive';
+                    else if (action === 'delete') gasAction = 'deleteTerm';
+                } else if (resource.includes('assignments.php')) {
+                    if (action === 'list') gasAction = 'listAssignments';
+                    else if (action === 'create_multiple') gasAction = 'createAssignments';
+                    else if (action === 'update') gasAction = 'updateAssignment';
+                    else if (action === 'delete') gasAction = 'deleteAssignment';
+                } else if (resource.includes('import_users.php')) {
+                    gasAction = 'importUsers';
+                } else if (resource.includes('dashboard_stats.php')) {
+                    gasAction = 'getStats';
+                }
+
+                const clientIp = sessionStorage.getItem('client_ip') || 'GAS_API';
+                const userAgent = navigator.userAgent;
+                
+                // ดึง session_token ของผู้ใช้
+                let sessionToken = '';
+                const sessionStr = localStorage.getItem('user_session');
+                if (sessionStr) {
+                    try {
+                        const sessionObj = JSON.parse(sessionStr);
+                        if (sessionObj && sessionObj.session_token) {
+                            sessionToken = sessionObj.session_token;
+                        }
+                    } catch (e) {}
+                }
+
+                let gasUrl = `${GAS_API_URL}?action=${gasAction}&session_token=${encodeURIComponent(sessionToken)}&client_ip=${encodeURIComponent(clientIp)}&user_agent=${encodeURIComponent(userAgent)}`;
+                urlObj.searchParams.forEach((val, key) => {
+                    if (key !== 'action' && key !== 'client_ip' && key !== 'user_agent' && key !== 'app_secret_key' && key !== 'session_token') {
+                        gasUrl += `&${key}=${encodeURIComponent(val)}`;
+                    }
+                });
+
+                const gasConfig = config || {};
+                
+                // เพื่อหลีกเลี่ยง preflight CORS สำหรับคำสั่ง POST บน GAS
+                if (!gasConfig.headers) gasConfig.headers = {};
+                gasConfig.headers['Content-Type'] = 'text/plain;charset=utf-8';
+                gasConfig.redirect = 'follow';
+
+                const isGetRequest = (!config || !config.method || config.method.toUpperCase() === 'GET');
+                const isStats = gasAction === 'getStats' || gasAction === 'getDashboardStats';
+                const storage = isStats ? localStorage : sessionStorage;
+                const cacheKey = 'gas_cache_v2_' + btoa(encodeURIComponent(gasUrl)).replace(/=/g, '');
+
+                if (isGetRequest) {
+                    const cachedStr = storage.getItem(cacheKey);
+
+                    if (cachedStr) {
+                        // Stale-While-Revalidate: รีเทิร์นแคชทันที แล้วอัปเดตข้อมูลเบื้องหลัง
+                        originalFetch(gasUrl, gasConfig).then(res => {
+                            if (res.ok) {
+                                res.clone().text().then(text => {
+                                    try {
+                                        const parsed = JSON.parse(text);
+                                        if (parsed && parsed.success) {
+                                            storage.setItem(cacheKey, text);
+                                            storage.setItem(cacheKey + '_time', Date.now().toString());
+                                        }
+                                    } catch(e) {}
+                                }).catch(()=>{});
+                            }
+                        }).catch(()=>{});
+                        return Promise.resolve(new Response(cachedStr, { status: 200, headers: { 'Content-Type': 'application/json' }}));
+                    }
+                } else {
+                    // หากมีการเขียน/แก้ไขข้อมูล ให้ล้าง Cache ทั้งหมดเพื่อให้ข้อมูลอัปเดต
+                    Object.keys(sessionStorage).forEach(key => { if (key.startsWith('gas_cache_')) sessionStorage.removeItem(key); });
+                    Object.keys(localStorage).forEach(key => { if (key.startsWith('gas_cache_')) localStorage.removeItem(key); });
+                }
+
+                return originalFetch(gasUrl, gasConfig).then(response => {
+                    if (response.ok) {
+                        const cloneForAuth = response.clone();
+                        cloneForAuth.text().then(text => {
+                            try {
+                                const parsed = JSON.parse(text);
+                                
+                                // ตรวจสอบเซสชันหมดอายุ หรือ ปฏิเสธสิทธิ์การเข้าถึง
+                                if (parsed && parsed.success === false && (parsed.status === 401 || (parsed.message && (parsed.message.includes('เซสชัน') || parsed.message.includes('หมดอายุ') || parsed.message.includes('สิทธิ์การเข้าถึง'))))) {
+                                    Swal.fire({
+                                        title: 'หมดเวลาเชื่อมต่อหรือเซสชันไม่ถูกต้อง',
+                                        text: parsed.message || 'กรุณาเข้าสู่ระบบใหม่อีกครั้งเพื่อความปลอดภัย',
+                                        icon: 'warning',
+                                        confirmButtonText: 'ตกลง'
+                                    }).then(() => {
+                                        clearSession();
+                                        window.location.href = '../auth/login.html';
+                                    });
+                                } else if (isGetRequest && parsed && parsed.success) {
+                                    // บันทึกลงแคชเฉพาะคำขอที่เป็นสำเร็จและไม่ใช่ error เท่านั้น
+                                    storage.setItem(cacheKey, text);
+                                    storage.setItem(cacheKey + '_time', Date.now());
+                                }
+                            } catch(e) {
+                                console.warn('JSON parsing failed on response check', e);
+                            }
+                        }).catch(e => console.warn('Failed to clone response for checking', e));
+                    }
+                    return response;
+                });
+            }
+            return originalFetch(resource, config);
+        };
+    </script>
+
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Signature Pad -->
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.5/dist/signature_pad.umd.min.js"></script>
+    <!-- Sortable.js -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: TH Sarabun -->
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body class="font-sans text-gray-800 antialiased min-h-screen mesh-bg flex overflow-hidden">
+
+    <!-- Sidebar Placeholder -->
+    <div id="sidebar-placeholder"></div>
+
+
+    <!-- Overlay -->
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-60 z-30 hidden md:hidden backdrop-blur-sm transition-opacity" onclick="toggleSidebar()"></div>
+
+    <!-- Main Content wrapper -->
+    <div class="flex-1 flex flex-col h-screen overflow-hidden w-full transition-all duration-300 relative">
+        
+        <!-- Top Header -->
+        <header class="floating-header z-20 flex justify-between items-center px-4 md:px-8 py-3">
+            <div class="flex items-center">
+                <button class="text-school hover:text-blue-900 focus:outline-none mr-4 transition transform hover:scale-110" onclick="toggleSidebar()">
+                    <i class="fas fa-bars text-2xl"></i>
+                </button>
+                <h2 class="text-xl font-bold text-gray-800">ระบบนิเทศการสอน</h2>
+            </div>
+            <div class="h-10 w-10 rounded-full bg-blue-100/80 border border-blue-200 flex items-center justify-center text-school font-bold shadow-sm backdrop-blur-sm">
+                <i class="fas fa-user"></i>
+            </div>
+        </header>
+
+        <!-- View content -->
+        <main class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 relative">
+
+        <div id="views-container" class="main-content-wrapper p-6 min-h-[calc(100vh-140px)]">
+            <!-- Dynamic subviews loaded here -->
+        </div>
+        </main>
+    </div>
+
+    <!-- Modals Placeholder -->
+    <div id="modals-placeholder"></div>
+
+    <!-- Scripts Logic -->
+    <script>
+        // ================= TablePaginator Helper Class =================
+        class TablePaginator {
+            constructor(options) {
+                this.tableBodyId = options.tableBodyId;
+                this.paginationContainerId = options.paginationContainerId;
+                this.pageSize = options.pageSize || 10;
+                this.rawItems = [];
+                this.filteredItems = [];
+                this.currentPage = 1;
+                this.renderRowCallback = options.renderRow;
+                this.filterCallback = options.filter || ((items) => items);
+                
+                // แปลงเครื่องหมายยีดกลางเป็นขีดล่างเพื่อใช้เป็นชื่อตัวแปรที่ถูกต้อง
+                this.instanceName = this.tableBodyId.replace(/-/g, '_') + 'Paginator';
+                window[this.instanceName] = this;
+                
+                this.setupElements();
+            }
+            
+            setupElements() {
+                this.tbody = document.getElementById(this.tableBodyId);
+                this.pagContainer = document.getElementById(this.paginationContainerId);
+            }
+            
+            setData(items) {
+                this.rawItems = items || [];
+                this.applyFilter();
+            }
+            
+            applyFilter() {
+                this.filteredItems = this.filterCallback(this.rawItems);
+                this.currentPage = 1;
+                this.render();
+            }
+            
+            render() {
+                if (!this.tbody) this.setupElements();
+                if (!this.tbody) return;
+                
+                this.tbody.innerHTML = '';
+                
+                if (this.filteredItems.length === 0) {
+                    const colspan = this.tbody.closest('table').querySelectorAll('thead th').length || 6;
+                    this.tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center py-8 text-gray-500">ไม่พบข้อมูลที่ตรงกับเงื่อนไข</td></tr>`;
+                    if (this.pagContainer) this.pagContainer.innerHTML = '';
+                    return;
+                }
+                
+                const start = (this.currentPage - 1) * this.pageSize;
+                const end = start + this.pageSize;
+                const pageItems = this.filteredItems.slice(start, end);
+                
+                pageItems.forEach((item, index) => {
+                    const actualIndex = start + index;
+                    const trHtml = this.renderRowCallback(item, actualIndex);
+                    if (trHtml) {
+                        this.tbody.insertAdjacentHTML('beforeend', trHtml);
+                    }
+                });
+                
+                this.renderPagination();
+            }
+            
+            renderPagination() {
+                if (!this.pagContainer) return;
+                this.pagContainer.innerHTML = '';
+                
+                const totalPages = Math.ceil(this.filteredItems.length / this.pageSize);
+                if (totalPages <= 1) return;
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = 'flex justify-between items-center px-4 py-3 bg-white border-t border-gray-200 sm:px-6 w-full mt-4 rounded-b-lg';
+                
+                const startItem = (this.currentPage - 1) * this.pageSize + 1;
+                const endItem = Math.min(this.currentPage * this.pageSize, this.filteredItems.length);
+                
+                let paginationButtons = '';
+                
+                // Prev button
+                const prevDisabled = this.currentPage === 1 ? 'disabled class="opacity-50 cursor-not-allowed text-gray-400 px-3 py-2 border border-gray-300 rounded-l-md bg-white"' : 'class="relative inline-flex items-center px-3 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"';
+                paginationButtons += `
+                    <button onclick="window['${this.instanceName}'].setPage(${this.currentPage - 1})" ${prevDisabled}>
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                `;
+                
+                // Page numbers (with ellipsis truncation)
+                const maxVisiblePages = 5;
+                let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePages / 2));
+                let endPage = startPage + maxVisiblePages - 1;
+
+                if (endPage > totalPages) {
+                    endPage = totalPages;
+                    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                }
+
+                if (startPage > 1) {
+                    paginationButtons += `<button onclick="window['${this.instanceName}'].setPage(1)" class="relative inline-flex items-center px-4 py-2 border text-sm font-medium bg-white border-gray-300 text-gray-500 hover:bg-gray-50">1</button>`;
+                    if (startPage > 2) {
+                        paginationButtons += `<span class="relative inline-flex items-center px-4 py-2 border text-sm font-medium bg-white border-gray-300 text-gray-500">...</span>`;
+                    }
+                }
+
+                for (let i = startPage; i <= endPage; i++) {
+                    const activeClass = i === this.currentPage 
+                        ? 'z-10 bg-blue-50 border-blue-500 text-blue-600' 
+                        : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50';
+                    paginationButtons += `
+                        <button onclick="window['${this.instanceName}'].setPage(${i})" class="relative inline-flex items-center px-4 py-2 border text-sm font-medium ${activeClass}">
+                            ${i}
+                        </button>
+                    `;
+                }
+
+                if (endPage < totalPages) {
+                    if (endPage < totalPages - 1) {
+                        paginationButtons += `<span class="relative inline-flex items-center px-4 py-2 border text-sm font-medium bg-white border-gray-300 text-gray-500">...</span>`;
+                    }
+                    paginationButtons += `<button onclick="window['${this.instanceName}'].setPage(${totalPages})" class="relative inline-flex items-center px-4 py-2 border text-sm font-medium bg-white border-gray-300 text-gray-500 hover:bg-gray-50">${totalPages}</button>`;
+                }
+                
+                // Next button
+                const nextDisabled = this.currentPage === totalPages ? 'disabled class="opacity-50 cursor-not-allowed text-gray-400 px-3 py-2 border border-gray-300 rounded-r-md bg-white"' : 'class="relative inline-flex items-center px-3 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"';
+                paginationButtons += `
+                    <button onclick="window['${this.instanceName}'].setPage(${this.currentPage + 1})" ${nextDisabled}>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                `;
+                
+                wrapper.innerHTML = `
+                    <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between w-full">
+                        <div>
+                            <p class="text-sm text-gray-700">
+                                แสดงผลที่ <span class="font-medium">${startItem}</span> ถึง <span class="font-medium">${endItem}</span> จากทั้งหมด <span class="font-medium">${this.filteredItems.length}</span> รายการ
+                            </p>
+                        </div>
+                        <div>
+                            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                ${paginationButtons}
+                            </nav>
+                        </div>
+                    </div>
+                `;
+                
+                this.pagContainer.appendChild(wrapper);
+            }
+            
+            setPage(page) {
+                this.currentPage = page;
+                this.render();
+            }
+            
+            setPageSize(size) {
+                this.pageSize = parseInt(size, 10);
+                this.currentPage = 1;
+                this.render();
+            }
+        }
+
+// ================= Global State & Auth =================
+        let configData = { items: [] };
+        let signTeacher, signObserver;
+
+        const toBase64 = file => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+
+        function setSelectValueSafely(selectId, value) {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            const val = value || '';
+            let optionExists = false;
+            for (let i = 0; i < select.options.length; i++) {
+                if (select.options[i].value === val) {
+                    optionExists = true;
+                    break;
+                }
+            }
+            if (!optionExists && val !== '') {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.text = val;
+                select.appendChild(opt);
+            }
+            select.value = val;
+        }
+
+        // ================= Initialization =================
+        let globalTemplates = [];
+        
+        // ==========================================
+        // Evaluation Criteria Editor Logic
+        // ==========================================
+        let criteriaData = window.evaluationCriteria || [];
+
+        function renderCriteriaEditor() {
+            const tbody = document.getElementById('criteria-table-body');
+            if (!tbody) return;
+            
+            if (criteriaData.length === 0 && window.evaluationCriteria) {
+                criteriaData = window.evaluationCriteria;
+            }
+            
+            tbody.innerHTML = '';
+            
+            if (criteriaData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-500">ไม่มีข้อมูลเกณฑ์ กรุณาเพิ่มเกณฑ์ใหม่</td></tr>';
+                return;
+            }
+            
+            const colorOptions = [
+                { val: 'green', label: 'เขียว (ดีมาก)' },
+                { val: 'blue', label: 'น้ำเงิน (ดี)' },
+                { val: 'yellow', label: 'เหลือง (พอใช้)' },
+                { val: 'orange', label: 'ส้ม (ควรปรับปรุง)' },
+                { val: 'red', label: 'แดง (ไม่ผ่าน)' }
+            ];
+            
+            criteriaData.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                
+                let colorSelect = '<select class="w-full border-gray-300 rounded p-1 text-sm" onchange="updateCriteria(' + index + ', \'color\', this.value)">';
+                colorOptions.forEach(opt => {
+                    colorSelect += `<option value="${opt.val}" ${item.color === opt.val ? 'selected' : ''}>${opt.label}</option>`;
+                });
+                colorSelect += '</select>';
+                
+                tr.innerHTML = `
+                    <td class="px-4 py-2"><input type="text" value="${item.name}" onchange="updateCriteria(${index}, 'name', this.value)" class="w-full border-gray-300 rounded p-1 text-sm"></td>
+                    <td class="px-4 py-2"><input type="number" value="${item.min}" onchange="updateCriteria(${index}, 'min', this.value)" class="w-full border-gray-300 rounded p-1 text-sm text-center" min="0" max="100"></td>
+                    <td class="px-4 py-2"><input type="number" value="${item.max}" onchange="updateCriteria(${index}, 'max', this.value)" class="w-full border-gray-300 rounded p-1 text-sm text-center" min="0" max="100"></td>
+                    <td class="px-4 py-2">${colorSelect}</td>
+                    <td class="px-4 py-2 text-center">
+                        <button onclick="removeCriteriaItem(${index})" class="text-red-500 hover:text-red-700" title="ลบ"><i class="fas fa-trash-alt"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            criteriaData.sort((a, b) => b.max - a.max);
+            window.evaluationCriteria = criteriaData;
+        }
+
+        function addCriteriaItem() {
+            criteriaData.push({ name: 'เกณฑ์ใหม่', min: 0, max: 0, color: 'blue' });
+            renderCriteriaEditor();
+        }
+
+        function updateCriteria(index, field, value) {
+            if (field === 'min' || field === 'max') value = parseInt(value) || 0;
+            criteriaData[index][field] = value;
+            renderCriteriaEditor();
+        }
+
+        function removeCriteriaItem(index) {
+            criteriaData.splice(index, 1);
+            renderCriteriaEditor();
+        }
+
+        function saveCriteriaConfig() {
+            Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            
+            fetch('../api/settings.php?action=save_criteria', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ evaluation_criteria: criteriaData })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success');
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+        window.addEventListener('popstate', (e) => {
+            if (e.state && e.state.page) {
+                performSwitch(e.state.page);
+            } else {
+                const urlParams = new URLSearchParams(window.location.search);
+                const page = urlParams.get('page') || 'home';
+                performSwitch(page);
+            }
+        });
+
+        async function loadComponents() {
+            try {
+                // โหลด Sidebar
+                const sidebarHtml = await fetch('sidebar.html').then(r => r.text());
+                document.getElementById('sidebar-placeholder').innerHTML = sidebarHtml;
+                
+                // โหลด Modals
+                const modalsHtml = await fetch('modals.html').then(r => r.text());
+                document.getElementById('modals-placeholder').innerHTML = modalsHtml;
+                
+                // โหลด Sub-views ทั้งหมด
+                const viewsList = [
+                    'home.html', 'settings.html', 'form.html', 'edit_form.html', 
+                    'supervision_list.html', 'report.html', 'analytics.html', 
+                    'assignments.html', 'users.html', 'logs.html', 'footer.html'
+                ];
+                
+                const viewsContainer = document.getElementById('views-container');
+                for (const file of viewsList) {
+                    const html = await fetch(file).then(r => r.text());
+                    const temp = document.createElement('div');
+                    temp.innerHTML = html;
+                    
+                    // เรียกรันแท็ก <script> ที่อยู่ภายใน Sub-view ที่ถูกโหลด
+                    const scripts = temp.querySelectorAll('script');
+                    scripts.forEach(s => {
+                        const newScript = document.createElement('script');
+                        if (s.src) {
+                            newScript.src = s.src;
+                        } else {
+                            newScript.textContent = s.textContent;
+                        }
+                        document.body.appendChild(newScript);
+                        s.remove();
+                    });
+                    
+                    while (temp.firstChild) {
+                        viewsContainer.appendChild(temp.firstChild);
+                    }
+                }
+                
+                // ตั้งค่ารายละเอียดทั่วไปบน Sidebar
+                const nameEl = document.getElementById('sidebar-user-name');
+                const roleTextEl = document.getElementById('role-text');
+                if (nameEl) nameEl.textContent = window.userDisplayName || window.userUsername;
+                if (roleTextEl) roleTextEl.textContent = window.userRole;
+                
+                if (window.userRole === 'admin') {
+                    const adminSec = document.getElementById('sidebar-admin-section');
+                    if (adminSec) adminSec.classList.remove('hidden');
+                }
+                
+                // ตั้งชื่อกับภาพผู้นิเทศในช่องกรอกของ Form โดยใช้รายละเอียดจาก session
+                const fObserverInput = document.getElementById('f_observer');
+                const fObserverPosInput = document.getElementById('f_observer_pos');
+                if (fObserverInput) fObserverInput.value = window.userDisplayName || window.userUsername;
+                if (fObserverPosInput) fObserverPosInput.value = window.userPosition || '-';
+
+                // โหลดข้อมูลโรงเรียน
+                if (GAS_API_URL) {
+                    const settingsRes = await fetch(GAS_API_URL + '?action=getSettings').then(r => r.json());
+                    if (settingsRes.success && settingsRes.data) {
+                        const data = settingsRes.data;
+                        window.schoolSettings = data;
+                        if (data.school_name) {
+                            const nameText = document.getElementById('sidebar-school-name');
+                            if (nameText) nameText.textContent = data.school_name;
+                            document.title = "ระบบนิเทศการสอน - " + data.school_name;
+                        }
+                        if (data.school_logo) {
+                            const logoImg = document.getElementById('sidebar-school-logo');
+                            const defaultLogo = document.getElementById('sidebar-default-logo');
+                            const favicon = document.getElementById('school-logo-favicon');
+                            
+                            if (logoImg) {
+                                logoImg.src = data.school_logo;
+                                logoImg.classList.remove('hidden');
+                            }
+                            if (defaultLogo) defaultLogo.classList.add('hidden');
+                            if (favicon) favicon.href = data.school_logo;
+                        }
+                    }
+                }
+                
+            } catch (err) {
+                console.error("ล้มเหลวในการโหลดคอมโพเนนต์:", err);
+            }
+        }
+
+        async function initializeDashboard() {
+            await loadComponents();
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryPage = urlParams.get('page');
+            const path = window.location.pathname;
+            const match = path.match(/\/([^\/]+)\.html$/);
+            const page = queryPage || ((match && match[1] !== 'dashboard') ? match[1] : null);
+            if (page) {
+                if (page === 'edit_form') {
+                    const id = urlParams.get('id');
+                    if (id) {
+                        editReport(id);
+                    } else {
+                        performSwitch('report');
+                    }
+                } else if (page === 'form') {
+                    switchView('supervision_list');
+                } else {
+                    performSwitch(page);
+                }
+            } else {
+                performSwitch('home');
+            }
+            
+            loadConfig();
+            loadTemplatesList();
+
+            // Initialize Sortable on config-container
+            const configContainer = document.getElementById('config-container');
+            if (configContainer && window.Sortable) {
+                new Sortable(configContainer, {
+                    handle: '.cursor-move',
+                    animation: 150,
+                    onEnd: function () {
+                        const newItems = [];
+                        configContainer.querySelectorAll('[data-id]').forEach(el => {
+                            const id = el.getAttribute('data-id');
+                            const item = configData.items.find(i => String(i.id) === String(id));
+                            if (item) {
+                                newItems.push(item);
+                            }
+                        });
+                        configData.items = newItems;
+                    }
+                });
+            }
+
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            const fDate = document.getElementById('f_date');
+            if (fDate) fDate.value = now.toISOString().slice(0, 10);
+
+            const cT = document.getElementById('padTeacher');
+            const cO = document.getElementById('padObserver');
+            if (cT && cO) {
+                signTeacher = new SignaturePad(cT, { backgroundColor: 'rgb(255, 255, 255)', penColor: 'rgb(30, 64, 175)' });
+                signObserver = new SignaturePad(cO, { backgroundColor: 'rgb(255, 255, 255)', penColor: 'rgb(30, 64, 175)' });
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', initializeDashboard);
+
+        function loadGeneralSettings() {
+            fetch('../api/settings.php?action=get')
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        const elSchool = document.getElementById('setting_school_name');
+                        if(elSchool) elSchool.value = res.data.school_name || '';
+                        const elDir = document.getElementById('setting_director_name');
+                        if(elDir) elDir.value = res.data.director_name || '';
+                        const elDep = document.getElementById('setting_deputy_director_name');
+                        if(elDep) elDep.value = res.data.deputy_director_name || '';
+                        
+                        const elLogo = document.getElementById('current_logo');
+                        if (elLogo && res.data.school_logo) {
+                            elLogo.src = res.data.school_logo;
+                        }
+
+                        if (res.data.evaluation_criteria) {
+                            criteriaData = res.data.evaluation_criteria;
+                            renderCriteriaEditor();
+                        }
+                    }
+                });
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (window.innerWidth < 768) {
+                sidebar.classList.toggle('-translate-x-full');
+                overlay.classList.toggle('hidden');
+            } else {
+                sidebar.classList.toggle('md:-ml-72');
+            }
+        }
+
+        // ================= Home Dashboard Logic =================
+        function loadDashboardStats() {
+            fetch('../api/dashboard_stats.php')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        const totalEval = document.getElementById('stat-total-eval');
+                        const avgScore = document.getElementById('stat-avg-score');
+                        const totalTeachers = document.getElementById('stat-total-teachers');
+                        const levelExcellent = document.getElementById('stat-level-excellent');
+
+                        if (totalEval) totalEval.innerText = data.data.total_evaluations;
+                        if (avgScore) avgScore.innerText = data.data.avg_score + '%';
+                        if (totalTeachers) totalTeachers.innerText = data.data.total_teachers;
+
+                        const levelsKeys = Object.keys(data.data.levels || {});
+                        const topKey = levelsKeys.length > 0 ? levelsKeys[0] : 'ดีมาก';
+                        const excellentCount = data.data.levels[topKey] || 0;
+                        if (levelExcellent) {
+                            levelExcellent.innerText = excellentCount;
+                            
+                            // Dynamic color mapping and label update for the 4th stat card
+                            const cardEl = levelExcellent.closest('.bg-white');
+                            if (cardEl) {
+                                const labelEl = cardEl.querySelector('p');
+                                if (labelEl) labelEl.innerText = `ผลประเมิน "${topKey}"`;
+                                
+                                const iconContainer = cardEl.querySelector('.rounded-full');
+                                let colorName = 'blue';
+                                if (topKey === 'ดีมาก') colorName = 'green';
+                                else if (topKey === 'ดี') colorName = 'blue';
+                                else if (topKey === 'พอใช้') colorName = 'yellow';
+                                else if (topKey === 'ปรับปรุง' || topKey === 'ควรปรับปรุง') colorName = 'orange';
+                                else if (topKey === 'ไม่ผ่าน') colorName = 'red';
+                                
+                                cardEl.className = `bg-white p-6 rounded-xl shadow-md border-l-4 border-${colorName}-500`;
+                                if (iconContainer) {
+                                    iconContainer.className = `w-12 h-12 rounded-full bg-${colorName}-100 flex items-center justify-center text-${colorName}-600 text-xl`;
+                                }
+                            }
+                        }
+                    }
+                })
+                .catch(err => console.error("Failed to load stats:", err));
+        }
+
+        function loadHomeAssignments() {
+            const tbody = document.getElementById('home-assignments-body');
+            if (tbody && typeof getSkeletonRows === 'function') {
+                tbody.innerHTML = getSkeletonRows(4, 3);
+            }
+            fetch('../api/assignments.php?action=list')
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        const tbody = document.getElementById('home-assignments-body');
+                        if (!tbody) return;
+                        tbody.innerHTML = '';
+                        
+                        let tasks = res.data;
+                        const isTeacher = window.userRole !== 'admin';
+                        if (isTeacher) {
+                            tasks = tasks.filter(a => String(a.observer_id) === String(window.userId));
+                        }
+                        
+                        if (tasks.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-gray-500">ไม่มีงานนิเทศที่ได้รับมอบหมาย</td></tr>';
+                            return;
+                        }
+                        
+                        tasks.slice(0, 5).forEach(a => {
+                            const statusBadge = a.status === 'pending'
+                                ? '<span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full"><i class="fas fa-clock mr-1"></i>รอดำเนินการ</span>'
+                                : '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full"><i class="fas fa-check mr-1"></i>เสร็จสิ้น</span>';
+                            
+                            const actionBtn = a.status === 'pending'
+                                ? `<button onclick="startEvalFromHome(${a.teacher_id}, ${a.term_id || a.term})" class="bg-school text-white px-3 py-1 text-sm rounded hover:bg-school-dark transition shadow-sm">ประเมิน</button>`
+                                : `<button disabled class="bg-gray-300 text-gray-600 px-3 py-1 text-sm rounded cursor-not-allowed">ประเมินแล้ว</button>`;
+
+                            tbody.insertAdjacentHTML('beforeend', `
+                                <tr class="hover:bg-blue-50">
+                                    <td class="px-6 py-4 text-center text-sm">${a.year}/${a.term_name}</td>
+                                    <td class="px-6 py-4 font-medium text-sm text-gray-800">${a.teacher_name}</td>
+                                    <td class="px-6 py-4 text-center">${statusBadge}</td>
+                                    <td class="px-6 py-4 text-center">${actionBtn}</td>
+                                </tr>
+                            `);
+                        });
+                    }
+                })
+                .catch(err => {
+                    const tbody = document.getElementById('home-assignments-body');
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-red-500">โหลดข้อมูลล้มเหลว</td></tr>';
+                    console.error("Failed to load assignments:", err);
+                });
+        }
+
+        function startEvalFromHome(teacherId, termId) {
+            switchView('form');
+            setTimeout(() => {
+                const tSelect = document.getElementById('f_teacher');
+                if(tSelect) {
+                    tSelect.value = teacherId;
+                    teacherSelected(teacherId); // trigger data load
+                }
+            }, 500);
+        }
+
+        function switchView(viewId) {
+            performSwitch(viewId);
+            window.history.pushState({page: viewId}, '', '?page=' + viewId);
+        }
+
+        function performSwitch(viewId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('view-hidden'));
+            document.getElementById('view-' + viewId).classList.remove('view-hidden');
+
+            if (viewId === 'home') {
+                loadDashboardStats();
+                loadHomeAssignments();
+            }
+            
+            // ปิด Sidebar บนมือถือ
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (sidebar && !sidebar.classList.contains('-translate-x-full')) {
+                sidebar.classList.add('-translate-x-full');
+                if(overlay) overlay.classList.add('hidden');
+            }
+
+            if (viewId === 'settings') {
+                loadSettingsTemplatesList();
+                loadGeneralSettings();
+                const evw = document.getElementById('template-editor-view');
+                const lvw = document.getElementById('template-list-view');
+                if (evw && lvw) {
+                    evw.classList.add('hidden');
+                    lvw.classList.remove('hidden');
+                }
+            }
+            if (viewId === 'supervision_list') {
+                loadSupervisionList();
+            }
+            if (viewId === 'form') {
+                loadFormTeachers();
+                loadActiveTermForForm();
+                renderEvalTable();
+            }
+            if (viewId === 'report') loadReportData();
+            if (viewId === 'analytics') loadAnalyticsData();
+            if (viewId === 'users') loadUsers();
+            if (viewId === 'assignments') loadAssignments();
+            if (viewId === 'logs') loadSystemLogs();
+        }
+
+        // ================= Config System =================
+        function loadConfig() {
+            const tbody = document.getElementById('eval-table-body');
+            if (tbody && typeof getSkeletonRows === 'function') tbody.innerHTML = getSkeletonRows(7, 5);
+            fetch('../api/api.php?action=getConfig')
+                .then(response => {
+                    if (!response.ok) throw new Error('เกิดข้อผิดพลาดในการโหลดการตั้งค่า');
+                    return response.json();
+                })
+                .then(res => {
+                    configData = res;
+                    if (!configData.items || configData.items.length === 0) {
+                        configData.items = [
+                            { id: generateId(), type: 'main', text: 'ด้านการเตรียมการสอน' },
+                            { id: generateId(), type: 'sub', text: 'มีแผนการจัดการเรียนรู้ที่สอดคล้องกับตัวชี้วัด' }
+                        ];
+                    }
+                    // ถ้าเปิดหน้า config อยู่ให้โหลดใหม่
+                    const vSet = document.getElementById('view-settings');
+                    if (vSet && !vSet.classList.contains('view-hidden')) {
+                        renderConfigEditor();
+                    }
+                    // ถ้าเปิดหน้า form อยู่ ให้เรนเดอร์ตารางใหม่ด้วย
+                    const vForm = document.getElementById('view-form');
+                    if (vForm && !vForm.classList.contains('view-hidden')) {
+                        renderEvalTable();
+                    }
+                })
+                .catch(err => console.error("โหลดการตั้งค่าล้มเหลว:", err));
+        }
+
+        function generateId() { return 'item_' + Math.random().toString(36).substr(2, 9); }
+
+        function renderConfigEditor() {
+            const container = document.getElementById('config-container');
+            container.innerHTML = '';
+
+            if (configData.items.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 italic">ยังไม่มีหัวข้อประเมิน กรุณาเพิ่มหัวข้อ</p>';
+                return;
+            }
+
+            configData.items.forEach((item, index) => {
+                const isMain = item.type === 'main';
+                const bgClass = isMain ? 'bg-blue-50 border-l-4 border-school' : 'bg-white border ml-8';
+                const icon = isMain ? '<i class="fas fa-folder-open text-school mr-2"></i>' : '<i class="fas fa-file-alt text-blue-300 mr-2"></i>';
+
+                const html = `
+                    <div class="flex items-center p-3 rounded shadow-sm ${bgClass}" data-id="${item.id}">
+                        <div class="cursor-move text-gray-300 mr-3"><i class="fas fa-grip-vertical"></i></div>
+                        ${icon}
+                        <input type="text" class="flex-grow border-b border-gray-200 focus:outline-none focus:border-school bg-transparent px-2 py-1 ${isMain ? 'font-bold text-school' : 'text-gray-700'}" 
+                               value="${item.text}" onchange="updateConfigText('${item.id}', this.value)" placeholder="${isMain ? 'ระบุหัวข้อหลัก' : 'ระบุหัวข้อย่อย'}">
+                        <button onclick="removeConfigItem('${item.id}')" class="text-red-400 hover:text-red-600 ml-4 transition"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', html);
+            });
+        }
+
+        function addConfigItem(type) { configData.items.push({ id: generateId(), type: type, text: '' }); renderConfigEditor(); }
+        function removeConfigItem(id) { configData.items = configData.items.filter(i => String(i.id) !== String(id)); renderConfigEditor(); }
+        function updateConfigText(id, val) { const item = configData.items.find(i => String(i.id) === String(id)); if (item) item.text = val; }
+
+        // original saveConfig 
+function saveConfigOriginal() {
+            Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            fetch('../api/api.php?action=saveConfig', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(configData)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('ไม่สามารถบันทึกข้อมูลการตั้งค่าไปยังเซิร์ฟเวอร์');
+                return response.json();
+            })
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success').then(() => {
+                        closeTemplateEditor();
+                    });
+                }
+                else Swal.fire('ข้อผิดพลาด', res.message, 'error');
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาดเซิร์ฟเวอร์', err.message, 'error'));
+        }
+
+        // ================= Image Preview =================
+        function previewImage(input, previewId) {
+            const preview = document.getElementById(previewId);
+            const container = document.getElementById('previewContainer' + previewId.replace('preview', ''));
+
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    preview.src = e.target.result;
+                    container.classList.remove('hidden');
+                }
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                preview.src = "";
+                container.classList.add('hidden');
+            }
+        }
+
+        // ================= Form System =================
+        function renderEvalTable() {
+            const tbody = document.getElementById('eval-table-body');
+            tbody.innerHTML = '';
+            let mainCounter = 0, subCounter = 0, totalMaxScore = 0;
+
+            configData.items.forEach(item => {
+                if (item.type === 'main') {
+                    mainCounter++; subCounter = 0;
+                    tbody.insertAdjacentHTML('beforeend', `<tr class="topic-main"><td class="text-center">${mainCounter}.</td><td colspan="6">${item.text}</td></tr>`);
+                } else {
+                    subCounter++;
+                    let prefix = mainCounter > 0 ? mainCounter + "." + subCounter : subCounter;
+                    totalMaxScore += 5;
+                    tbody.insertAdjacentHTML('beforeend', `
+                        <tr class="hover:bg-blue-50 transition">
+                            <td class="text-center text-sm text-gray-500">${prefix}</td>
+                            <td class="topic-sub">${item.text}</td>
+                            <td class="text-center"><input type="radio" name="${item.id}" value="5" onchange="calcScore()" required></td>
+                            <td class="text-center"><input type="radio" name="${item.id}" value="4" onchange="calcScore()"></td>
+                            <td class="text-center"><input type="radio" name="${item.id}" value="3" onchange="calcScore()"></td>
+                            <td class="text-center"><input type="radio" name="${item.id}" value="2" onchange="calcScore()"></td>
+                            <td class="text-center"><input type="radio" name="${item.id}" value="1" onchange="calcScore()"></td>
+                        </tr>
+                    `);
+                }
+            });
+            document.getElementById('display-max').innerText = totalMaxScore;
+        }
+
+        function calcScore() {
+            const radios = document.querySelectorAll('#eval-table-body input[type="radio"]:checked');
+            let sum = 0;
+            radios.forEach(r => sum += parseInt(r.value));
+
+            const max = parseInt(document.getElementById('display-max').innerText) || 1;
+            const percent = ((sum / max) * 100).toFixed(2);
+
+            let level = "ไม่ผ่าน", color = "text-red-600 border-red-200";
+            if (percent >= 91) { level = "ดีมาก"; color = "text-green-600 border-green-200"; }
+            else if (percent >= 81) { level = "ดี"; color = "text-blue-600 border-blue-200"; }
+            else if (percent >= 71) { level = "พอใช้"; color = "text-yellow-600 border-yellow-200"; }
+            else if (percent >= 61) { level = "ควรปรับปรุง"; color = "text-orange-600 border-orange-200"; }
+
+            document.getElementById('display-total').innerText = sum;
+            document.getElementById('display-percent').innerText = percent;
+
+            const lvlEl = document.getElementById('display-level');
+            lvlEl.innerText = level;
+            lvlEl.className = `font-bold text-xl px-4 py-1 rounded bg-white shadow-sm border ${color}`;
+        }
+
+        async function submitForm(e) {
+            e.preventDefault();
+
+            const scores = {};
+            configData.items.forEach(item => {
+                if (item.type === 'sub') {
+                    const checked = document.querySelector(`#eval-table-body input[name="${item.id}"]:checked`);
+                    scores[item.id] = checked ? checked.value : 0;
+                }
+            });
+
+            // แปลงไฟล์แนบทั้ง 4 รูปเป็น Base64
+            const getBase64 = async (id) => {
+                const fileInput = document.getElementById(id);
+                if (fileInput && fileInput.files.length > 0) return await toBase64(fileInput.files[0]);
+                return "";
+            };
+
+            const f1 = await getBase64('f_file1');
+            const f2 = await getBase64('f_file2');
+            const f3 = await getBase64('f_file3');
+            const f4 = await getBase64('f_file4');
+
+            const stData = signTeacher.isEmpty() ? "" : signTeacher.toDataURL();
+            const soData = signObserver.isEmpty() ? "" : signObserver.toDataURL();
+
+            const formData = {
+                occurrence: document.getElementById('f_occurrence').value,
+                term: document.getElementById('f_term').value,
+                year: document.getElementById('f_year').value,
+                teacher: document.getElementById('f_teacher').options[document.getElementById('f_teacher').selectedIndex].text,
+                teacherId: document.getElementById('f_teacher').value,
+                department: document.getElementById('f_department').value,
+                subject: document.getElementById('f_subject').value,
+                className: document.getElementById('f_class').value,
+                date: document.getElementById('f_date').value,
+                time: document.getElementById('f_time').value,
+                observer: document.getElementById('f_observer').value,
+                teacherPosition: document.getElementById('f_teacher_pos').value,
+                observerPosition: document.getElementById('f_observer_pos').value,
+                scores: scores,
+                total: document.getElementById('display-total').innerText,
+                percent: document.getElementById('display-percent').innerText,
+                level: document.getElementById('display-level').innerText,
+                strengths: document.getElementById('f_strengths').value,
+                improvements: document.getElementById('f_improvements').value,
+                suggestions: document.getElementById('f_suggestions').value,
+                signTeacher: stData,
+                signObserver: soData,
+                attachedFileBase64_1: f1,
+                attachedFileBase64_2: f2,
+                attachedFileBase64_3: f3,
+                attachedFileBase64_4: f4
+            };
+
+            Swal.fire({
+                title: 'กำลังอัปโหลดข้อมูล...',
+                text: 'กรุณารอสักครู่ หากแนบรูปภาพหลายรูปอาจใช้เวลาสักพัก',
+                allowOutsideClick: false, didOpen: () => Swal.showLoading()
+            });
+
+            
+            fetch('../api/api.php?action=saveData', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('เกิดข้อผิดพลาดในการส่งข้อมูลไปยังเซิร์ฟเวอร์');
+                return response.json();
+            })
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', 'บันทึกข้อมูลและรูปภาพเรียบร้อยแล้ว', 'success').then(() => {
+                        document.getElementById('evalForm').reset();
+                        signTeacher.clear(); signObserver.clear();
+                        for (let i = 1; i <= 4; i++) {
+                            document.getElementById('previewContainer' + i).classList.add('hidden');
+                            document.getElementById('preview' + i).src = "";
+                        }
+                        renderEvalTable(); calcScore();
+                        switchView('report');
+                    });
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาดจากเซิร์ฟเวอร์', err.message, 'error'));
+        }
+
+        function deleteReport(id) {
+            Swal.fire({
+                title: 'ยืนยันการลบข้อมูล?',
+                text: "คุณไม่สามารถกู้คืนข้อมูลนี้ได้!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'ลบเลย!',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    fetch('../api/api.php?action=deleteReport', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: id })
+                    })
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            Swal.fire('ลบสำเร็จ!', res.message, 'success');
+                            loadReportData();
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                        }
+                    })
+                    .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+                }
+            });
+        }
+
+        let reportsPaginator = null;
+        function loadReportData() {
+            const tbody = document.getElementById('report-table-body');
+            tbody.innerHTML = getSkeletonRows(6, 5);
+
+            const filterYear = document.getElementById('filterYear') ? document.getElementById('filterYear').value : '';
+            const filterTerm = document.getElementById('filterTerm') ? document.getElementById('filterTerm').value : '';
+
+            fetch(`../api/api.php?action=getReportData&year=${filterYear}&term=${filterTerm}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('ไม่สามารถเชื่อมต่อดึงข้อมูลจากเซิร์ฟเวอร์ได้');
+                    return response.json();
+                })
+                .then(dataArray => {
+                    let actualData = dataArray;
+                    if (dataArray && dataArray.data !== undefined) {
+                        actualData = dataArray.data;
+                    }
+                    if (dataArray && dataArray.success === false) {
+                        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-red-500"><i class="fas fa-exclamation-triangle fa-2x mb-3"></i><br>ข้อผิดพลาด: ${dataArray.message || 'ข้อมูลผิดปกติ'}</td></tr>`;
+                        return;
+                    }
+                    if (!actualData || !Array.isArray(actualData)) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-500"><i class="fas fa-exclamation-triangle fa-2x mb-3"></i><br>ข้อมูลผิดปกติ</td></tr>';
+                        return;
+                    }
+                    
+                    if (!reportsPaginator) {
+                        reportsPaginator = new TablePaginator({
+                            tableBodyId: 'report-table-body',
+                            paginationContainerId: 'reports-pagination',
+                            pageSize: 10,
+                            renderRow: (row) => {
+                                let lvlColor = "text-gray-600 bg-gray-100";
+                                if (row.level === 'ดีมาก') lvlColor = "text-green-700 bg-green-100";
+                                else if (row.level === 'ดี') lvlColor = "text-blue-700 bg-blue-100";
+                                else if (row.level === 'ไม่ผ่าน') lvlColor = "text-red-700 bg-red-100";
+                                else if (row.level === 'พอใช้') lvlColor = "text-yellow-700 bg-yellow-100";
+                                else if (row.level === 'ควรปรับปรุง') lvlColor = "text-orange-700 bg-orange-100";
+                                
+                                let docBtns = `<a href="preview_report.html?id=${row.id}" target="_blank" class="inline-flex items-center justify-center bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700 transition shadow-sm" title="ดูรายงาน / พิมพ์ PDF"><i class="fas fa-print"></i></a>`;
+                                
+                                const userRole = window.userRole;
+                                const currentUserId = window.userId;
+                                if (userRole === 'admin' || String(row.observer_id) === String(currentUserId)) {
+                                    docBtns += ` <a href="dashboard.html?page=edit_form&id=${row.id}" class="inline-flex items-center justify-center bg-yellow-500 text-white px-3 py-1.5 rounded text-sm hover:bg-yellow-600 transition shadow-sm ml-2" title="แก้ไข"><i class="fas fa-edit"></i></a>`;
+                                    docBtns += ` <button onclick="deleteReport('${row.id}')" class="inline-flex items-center justify-center bg-gray-500 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-600 transition shadow-sm ml-2" title="ลบข้อมูล"><i class="fas fa-trash"></i></button>`;
+                                }
+                                
+                                return `
+                                <tr class="hover:bg-blue-50 transition search-row">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${formatDateThai(row.date)}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 search-target">${row.teacher || '-'}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 search-target">${row.subject || '-'}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-school">${row.percent || '0'}%</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center"><span class="px-3 py-1 rounded-full text-xs font-bold ${lvlColor}">${row.level || '-'}</span></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center">${docBtns}</td>
+                                </tr>
+                                `;
+                            },
+                            filter: (items) => {
+                                const input = document.getElementById('searchReports') ? document.getElementById('searchReports').value.toLowerCase() : '';
+                                return items.filter(row => 
+                                    (row.teacher && row.teacher.toLowerCase().includes(input)) ||
+                                    (row.subject && row.subject.toLowerCase().includes(input)) ||
+                                    (row.level && row.level.toLowerCase().includes(input))
+                                );
+                            }
+                        });
+                    }
+                    
+                    reportsPaginator.setData(actualData);
+                })
+                .catch(error => {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-red-500">ดึงข้อมูลล้มเหลว: ${error.message}</td></tr>`;
+                });
+        }
+
+        function filterReports() {
+            if (reportsPaginator) {
+                reportsPaginator.applyFilter();
+            }
+        }
+
+        function filterTable() {
+            const input = document.getElementById('searchTable').value.toLowerCase();
+            const rows = document.querySelectorAll('.search-row');
+            rows.forEach(row => {
+                row.style.display = row.innerText.toLowerCase().includes(input) ? '' : 'none';
+            });
+        }
+
+        // ฟังก์ชันการออกรายงานผ่าน Google Docs เดิม ไม่ใช้แล้วในระบบ PHP/MySQL
+        // เปลี่ยนมาดาวน์โหลด PDF โดยตรงจากหน้าเว็บ
+        function downloadPdfDirectly(id) {
+            window.open('preview_report.html?id=' + id, '_blank');
+        }
+
+        function handleCsvUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext !== 'csv') {
+                Swal.fire('ข้อผิดพลาด', 'กรุณาอัปโหลดไฟล์นามสกุล .csv เท่านั้น', 'error');
+                event.target.value = '';
+                return;
+            }
+            
+            Swal.fire({
+                title: 'กำลังนำเข้าข้อมูล...',
+                text: 'กรุณารอสักครู่ ระบบกำลังประมวลผลไฟล์ CSV',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                let parsedUsers = [];
+                try {
+                    const lines = text.split(/\r?\n/);
+                    if (lines.length <= 1) throw new Error('ไฟล์ว่างเปล่าหรือไม่มีข้อมูล');
+                    
+                    // ล้างอักขระพิเศษ (เช่น BOM)
+                    const headers = lines[0].split(',').map(h => h.trim().replace(/[\uFEFF\r\n]/g, ''));
+                    
+                    for (let i = 1; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line) continue;
+                        
+                        const cols = line.split(',').map(c => c.trim());
+                        const userObj = {};
+                        
+                        headers.forEach((header, idx) => {
+                            let key = header.toLowerCase();
+                            if (key === 'displayname') key = 'display_name';
+                            userObj[key] = cols[idx] || '';
+                        });
+                        
+                        if (userObj.username && userObj.password) {
+                            parsedUsers.push(userObj);
+                        }
+                    }
+                } catch(err) {
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์ CSV ได้: ' + err.message, 'error');
+                    event.target.value = '';
+                    return;
+                }
+                
+                fetch('../api/import_users.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ users: parsedUsers })
+                })
+                .then(res => res.json())
+                .then(res => {
+                    event.target.value = '';
+                    
+                    if (res.success) {
+                        Swal.fire('นำเข้าข้อมูลเรียบร้อย', res.message, 'success').then(() => {
+                            loadUsers();
+                        });
+                    } else {
+                        Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                    }
+                })
+                .catch(err => {
+                    event.target.value = '';
+                    Swal.fire('ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: ' + err.message, 'error');
+                });
+            };
+            
+            reader.onerror = function() {
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์ได้', 'error');
+                event.target.value = '';
+            };
+            
+            // อ่านไฟล์แบบ UTF-8 รองรับภาษาไทย
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        let usersPaginator = null;
+        function loadUsers() {
+            const tbody = document.getElementById('users-table-body');
+            tbody.innerHTML = getSkeletonRows(7, 5);
+            
+            // รีเซ็ต master checkbox และ bulk action panel ทุกครั้งที่โหลดใหม่
+            const selectAll = document.getElementById('selectAllUsers');
+            if (selectAll) selectAll.checked = false;
+            const bulkPanel = document.getElementById('bulkActionPanel');
+            if (bulkPanel) bulkPanel.classList.add('hidden');
+
+            // Ensure templates are loaded before showing users
+            if (!globalTemplates || globalTemplates.length === 0) {
+                fetch('../api/templates.php?action=list')
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            globalTemplates = res.templates;
+                            const bulkSelect = document.getElementById('bulkTemplateSelect');
+                            if (bulkSelect) {
+                                bulkSelect.innerHTML = '<option value="">-- ลบเทมเพลต/ค่าเริ่มต้น --</option>';
+                                globalTemplates.forEach(t => {
+                                    bulkSelect.innerHTML += `<option value="${t.id}">${escapeHTML(t.name)}</option>`;
+                                });
+                            }
+                        }
+                        fetchUsersData(tbody);
+                    })
+                    .catch(() => fetchUsersData(tbody));
+            } else {
+                fetchUsersData(tbody);
+            }
+        }
+
+        function fetchUsersData(tbody) {
+            fetch('../api/user.php?action=list')
+                .then(response => response.json())
+                .then(res => {
+                    if (!res.success) throw new Error(res.message);
+                    
+                    if (!usersPaginator) {
+                        usersPaginator = new TablePaginator({
+                            tableBodyId: 'users-table-body',
+                            paginationContainerId: 'users-pagination',
+                            pageSize: 10,
+                            renderRow: (user) => {
+                                let roleColor = 'bg-gray-200 text-gray-800';
+                                if(user.role === 'admin') roleColor = 'bg-red-100 text-red-800';
+                                if(user.role === 'observer') roleColor = 'bg-blue-100 text-blue-800';
+                                if(user.role === 'teacher') roleColor = 'bg-green-100 text-green-800';
+
+                                let templateName = '<span class="text-gray-400 text-xs">- ค่าเริ่มต้น -</span>';
+                                if (user.template_id && globalTemplates) {
+                                    const tmpl = globalTemplates.find(t => t.id == user.template_id);
+                                    if (tmpl) templateName = `<span class="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-semibold border border-blue-100">${escapeHTML(tmpl.name)}</span>`;
+                                }
+
+                                return `
+                                    <tr class="hover:bg-blue-50 transition search-row">
+                                        <td class="px-4 py-4 text-center whitespace-nowrap text-sm">
+                                            <input type="checkbox" value="${user.id}" onchange="onUserSelectChange()" class="user-checkbox rounded text-school focus:ring-school cursor-pointer">
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">${escapeHTML(user.username)}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${escapeHTML(user.display_name || '-')}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${escapeHTML(user.email || '-')}</td>
+                                        <td class="px-6 py-4 text-center whitespace-nowrap text-sm"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${roleColor}">${escapeHTML(user.role)}</span></td>
+                                        <td class="px-6 py-4 text-center whitespace-nowrap text-sm">${templateName}</td>
+                                        <td class="px-6 py-4 text-center whitespace-nowrap text-sm font-medium">
+                                            <button onclick="editUser('${user.id}', '${escapeHTML(user.username)}', '${escapeHTML(user.display_name)}', '${escapeHTML(user.email)}', '${escapeHTML(user.role)}', '${user.template_id || ''}')" class="text-indigo-600 hover:text-indigo-900 mr-3"><i class="fas fa-edit"></i></button>
+                                            <button onclick="deleteUser('${user.id}')" class="text-red-600 hover:text-red-900"><i class="fas fa-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                `;
+
+                            },
+                            filter: (items) => {
+                                const input = document.getElementById('searchUsers') ? document.getElementById('searchUsers').value.toLowerCase() : '';
+                                return items.filter(user => 
+                                    user.username.toLowerCase().includes(input) ||
+                                    (user.display_name && user.display_name.toLowerCase().includes(input)) ||
+                                    (user.email && user.email.toLowerCase().includes(input)) ||
+                                    user.role.toLowerCase().includes(input)
+                                );
+                            }
+                        });
+                    }
+                    
+                    usersPaginator.setData(res.data);
+                })
+                .catch(err => {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-red-500"><i class="fas fa-exclamation-triangle fa-2x mb-3"></i><br><b>ผิดพลาด:</b> ${err.message}</td></tr>`;
+                });
+        }
+
+        function filterUsers() {
+            if (usersPaginator) {
+                usersPaginator.applyFilter();
+            }
+        }
+
+        function toggleTemplateDropdown() {
+            const role = document.getElementById('userRole').value;
+            const container = document.getElementById('templateContainer');
+            if (container) {
+                if (role === 'teacher') {
+                    container.style.display = 'block';
+                } else {
+                    container.style.display = 'none';
+                    document.getElementById('userTemplate').value = '';
+                }
+            }
+        }
+
+        function loadTemplatesList() {
+            fetch('../api/templates.php?action=list')
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        globalTemplates = res.templates;
+                        const select = document.getElementById('userTemplate');
+                        if (select) {
+                            select.innerHTML = '<option value="">-- ค่าเริ่มต้น --</option>';
+                            globalTemplates.forEach(t => {
+                                select.innerHTML += `<option value="${t.id}">${escapeHTML(t.name)}</option>`;
+                            });
+                        }
+                        
+                        // อัปเดตรายชื่อเทมเพลตใน Bulk Action Dropdown
+                        const bulkSelect = document.getElementById('bulkTemplateSelect');
+                        if (bulkSelect) {
+                            bulkSelect.innerHTML = '<option value="">-- ลบเทมเพลต/ค่าเริ่มต้น --</option>';
+                            globalTemplates.forEach(t => {
+                                bulkSelect.innerHTML += `<option value="${t.id}">${escapeHTML(t.name)}</option>`;
+                            });
+                        }
+                    }
+                })
+                .catch(err => console.error("โหลดรูปแบบแบบประเมินล้มเหลว:", err));
+        }
+
+        // ==========================================
+        // Bulk Template Assignment JavaScript Actions
+        // ==========================================
+        function toggleSelectAllUsers(master) {
+            const checkboxes = document.querySelectorAll('.user-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = master.checked;
+            });
+            onUserSelectChange();
+        }
+
+        function onUserSelectChange() {
+            const checkboxes = document.querySelectorAll('.user-checkbox:checked');
+            const count = checkboxes.length;
+            
+            const panel = document.getElementById('bulkActionPanel');
+            const countLabel = document.getElementById('selectedCount');
+            const masterCheckbox = document.getElementById('selectAllUsers');
+            const allCheckboxes = document.querySelectorAll('.user-checkbox');
+            
+            if (count > 0) {
+                panel.classList.remove('hidden');
+                countLabel.innerText = count;
+            } else {
+                panel.classList.add('hidden');
+            }
+            
+            if (masterCheckbox && allCheckboxes.length > 0) {
+                masterCheckbox.checked = (count === allCheckboxes.length);
+            }
+        }
+
+        function applyBulkTemplate() {
+            const checkedBoxes = document.querySelectorAll('.user-checkbox:checked');
+            const userIds = Array.from(checkedBoxes).map(cb => cb.value);
+            const templateId = document.getElementById('bulkTemplateSelect').value;
+            
+            if (userIds.length === 0) {
+                Swal.fire('ข้อผิดพลาด', 'กรุณาเลือกผู้ใช้อย่างน้อย 1 คน', 'warning');
+                return;
+            }
+            
+            Swal.fire({
+                title: 'ยืนยันการตั้งค่า?',
+                text: `คุณต้องการกำหนดเทมเพลตนี้ให้ครูที่เลือกจำนวน ${userIds.length} คน ใช่หรือไม่?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'ใช่, ดำเนินการ',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({ title: 'กำลังดำเนินการ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    
+                    fetch('../api/user.php?action=bulk_assign_templates', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_ids: userIds, template_id: templateId })
+                    })
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            Swal.fire('สำเร็จ', res.message, 'success').then(() => {
+                                loadUsers();
+                            });
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                        }
+                    })
+                    .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+                }
+            });
+        }
+
+        function showUserModal() {
+            document.getElementById('userForm').reset();
+            document.getElementById('userId').value = '';
+            document.getElementById('userRole').value = 'teacher';
+            const ut = document.getElementById('userTemplate');
+            if(ut) ut.value = '';
+            toggleTemplateDropdown();
+            document.getElementById('userModalTitle').innerText = 'เพิ่มผู้ใช้งาน';
+            document.getElementById('userModal').classList.remove('hidden');
+        }
+
+        function editUser(id, username, displayName, email, role, templateId) {
+            document.getElementById('userId').value = id;
+            document.getElementById('userUsername').value = username;
+            document.getElementById('userDisplayName').value = displayName;
+            document.getElementById('userEmail').value = email;
+            document.getElementById('userRole').value = role;
+            const ut = document.getElementById('userTemplate');
+            if(ut) ut.value = templateId || '';
+            document.getElementById('userPassword').value = ''; // ว่างไว้ = ไม่เปลี่ยน
+            toggleTemplateDropdown();
+            document.getElementById('userModalTitle').innerText = 'แก้ไขผู้ใช้งาน';
+            document.getElementById('userModal').classList.remove('hidden');
+        }
+
+        function hideUserModal() {
+            document.getElementById('userModal').classList.add('hidden');
+        }
+
+        function saveUser(event) {
+            event.preventDefault();
+            const id = document.getElementById('userId').value;
+            const data = {
+                id: id,
+                username: document.getElementById('userUsername').value,
+                display_name: document.getElementById('userDisplayName').value,
+                email: document.getElementById('userEmail').value,
+                role: document.getElementById('userRole').value,
+                template_id: document.getElementById('userTemplate') ? document.getElementById('userTemplate').value : '',
+                password: document.getElementById('userPassword').value
+            };
+
+            const action = id ? 'update' : 'create';
+
+            Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            fetch('../api/user.php?action=' + action, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success');
+                    hideUserModal();
+                    loadUsers();
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+
+        function deleteUser(id) {
+            Swal.fire({
+                title: 'ยืนยันการลบ?',
+                text: "คุณไม่สามารถกู้คืนข้อมูลผู้ใช้ที่ลบได้!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'ใช่, ลบเลย!',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    fetch('../api/user.php?action=delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: id })
+                    })
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            Swal.fire('ลบแล้ว!', res.message, 'success');
+                            loadUsers();
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                        }
+                    })
+                    .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+                }
+            });
+        }
+
+        function showChangePasswordModal() {
+            document.getElementById('changePasswordForm').reset();
+            document.getElementById('changePasswordModal').classList.remove('hidden');
+        }
+
+        function hideChangePasswordModal() {
+            document.getElementById('changePasswordModal').classList.add('hidden');
+        }
+
+        function changePassword(event) {
+            event.preventDefault();
+            const oldPass = document.getElementById('oldPassword').value;
+            const newPass = document.getElementById('newPassword').value;
+            const confirmPass = document.getElementById('confirmPassword').value;
+
+            if (newPass !== confirmPass) {
+                Swal.fire('ข้อผิดพลาด', 'รหัสผ่านใหม่ไม่ตรงกัน', 'error');
+                return;
+            }
+
+            Swal.fire({ title: 'กำลังเปลี่ยนรหัสผ่าน...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            fetch('../api/user.php?action=change_password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old_password: oldPass, new_password: newPass })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success');
+                    hideChangePasswordModal();
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+
+        function switchSettingsTab(tabName) {
+            const generalTab = document.getElementById('tab-content-general');
+            const evalTab = document.getElementById('tab-content-evaluation');
+            const termsTab = document.getElementById('tab-content-terms');
+            
+            const genBtn = document.getElementById('tab-btn-general');
+            const evalBtn = document.getElementById('tab-btn-evaluation');
+            const termsBtn = document.getElementById('tab-btn-terms');
+
+            if (generalTab && evalTab && termsTab) {
+                generalTab.classList.add('hidden');
+                evalTab.classList.add('hidden');
+                termsTab.classList.add('hidden');
+                
+                genBtn.classList.remove('text-school', 'border-b-2', 'border-school');
+                genBtn.classList.add('text-gray-500');
+                evalBtn.classList.remove('text-school', 'border-b-2', 'border-school');
+                evalBtn.classList.add('text-gray-500');
+                termsBtn.classList.remove('text-school', 'border-b-2', 'border-school');
+                termsBtn.classList.add('text-gray-500');
+
+                document.getElementById('tab-content-' + tabName).classList.remove('hidden');
+                document.getElementById('tab-btn-' + tabName).classList.add('text-school', 'border-b-2', 'border-school');
+                document.getElementById('tab-btn-' + tabName).classList.remove('text-gray-500');
+
+                if (tabName === 'terms') {
+                    loadTerms();
+                } else if (tabName === 'evaluation') {
+                    loadSettingsTemplatesList();
+                    renderCriteriaEditor();
+                }
+            }
+        }
+
+        async function saveGeneralSettings() {
+            const form = document.getElementById('generalSettingsForm');
+            if(!form) return;
+
+            Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            const getBase64 = async (id) => {
+                const fileInput = document.getElementById(id);
+                if (fileInput && fileInput.files.length > 0) return await toBase64(fileInput.files[0]);
+                return "";
+            };
+
+            const logoBase64 = await getBase64('setting_school_logo');
+            
+            const payload = {
+                school_name: document.getElementById('setting_school_name').value,
+                director_name: document.getElementById('setting_director_name').value,
+                deputy_director_name: document.getElementById('setting_deputy_director_name').value,
+                school_logo: logoBase64
+            };
+
+            fetch('../api/settings.php?action=save_general', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success').then(() => {
+                        window.location.reload();
+                    });
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => {
+                Swal.fire('ข้อผิดพลาด', err.message, 'error');
+            });
+        }
+        // ================= Template Management =================
+        function loadSettingsTemplatesList() {
+            const tbody = document.getElementById('templates-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = getSkeletonRows(2, 3);
+            
+            fetch('../api/templates.php?action=list')
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        tbody.innerHTML = '';
+                        if (res.templates.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-gray-500">ไม่มีรูปแบบประเมิน</td></tr>';
+                            return;
+                        }
+                        res.templates.forEach(t => {
+                            tbody.insertAdjacentHTML('beforeend', `
+                                <tr class="hover:bg-blue-50 transition">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">${escapeHTML(t.name)}</td>
+                                    <td class="px-6 py-4 text-center whitespace-nowrap text-sm font-medium">
+                                        <button onclick="window.open('preview_blank.html?template_id=${t.id}', '_blank')" class="text-green-600 hover:text-green-900 mr-3" title="ตัวอย่างก่อนพิมพ์"><i class="fas fa-print"></i></button>
+                                        <button onclick="editTemplate('${t.id}', '${escapeHTML(t.name)}')" class="text-indigo-600 hover:text-indigo-900 mr-3" title="แก้ไข"><i class="fas fa-edit"></i></button>
+                                        <button onclick="deleteTemplate('${t.id}')" class="text-red-600 hover:text-red-900" title="ลบ"><i class="fas fa-trash"></i></button>
+                                    </td>
+                                </tr>
+                            `);
+                        });
+                    }
+                })
+                .catch(err => console.error(err));
+        }
+
+        function editGlobalTemplate() {
+            document.getElementById('template-list-view').classList.add('hidden');
+            document.getElementById('template-editor-view').classList.remove('hidden');
+            document.getElementById('editor-title').innerText = 'แก้ไขรูปแบบเริ่มต้น (Default Template)';
+            document.getElementById('template_id_input').value = 'global';
+            document.getElementById('template_name_input').value = 'รูปแบบเริ่มต้น';
+            
+            Swal.fire({ title: 'กำลังโหลด...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            
+            fetch('../api/api.php?action=getConfig')
+                .then(res => res.json())
+                .then(res => {
+                    configData = res;
+                    if (!configData.items || configData.items.length === 0) {
+                        configData.items = [
+                            { id: generateId(), type: 'main', text: 'ด้านการเตรียมการสอน' },
+                            { id: generateId(), type: 'sub', text: 'มีแผนการจัดการเรียนรู้ที่สอดคล้องกับตัวชี้วัด' }
+                        ];
+                    }
+                    renderConfigEditor();
+                    Swal.close();
+                })
+                .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+
+        function createNewTemplate() {
+            document.getElementById('template-list-view').classList.add('hidden');
+            document.getElementById('template-editor-view').classList.remove('hidden');
+            document.getElementById('editor-title').innerText = 'สร้างรูปแบบแบบประเมินใหม่';
+            document.getElementById('template_id_input').value = '';
+            document.getElementById('template_name_input').value = '';
+            configData.items = [];
+            renderConfigEditor();
+        }
+
+        function editTemplate(id, name) {
+            document.getElementById('template-list-view').classList.add('hidden');
+            document.getElementById('template-editor-view').classList.remove('hidden');
+            document.getElementById('editor-title').innerText = 'แก้ไขรูปแบบ: ' + name;
+            document.getElementById('template_id_input').value = id;
+            document.getElementById('template_name_input').value = name;
+            
+            Swal.fire({ title: 'กำลังโหลด...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            
+            fetch('../api/templates.php?action=get&id=' + id)
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        try {
+                            configData = JSON.parse(res.template.items_json);
+                        } catch(e) {
+                            configData = { items: [] };
+                        }
+                        renderConfigEditor();
+                        Swal.close();
+                    } else {
+                        Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                    }
+                });
+        }
+
+        function closeTemplateEditor() {
+            document.getElementById('template-editor-view').classList.add('hidden');
+            document.getElementById('template-list-view').classList.remove('hidden');
+            loadSettingsTemplatesList();
+        }
+
+        function saveTemplateConfig() {
+            const id = document.getElementById('template_id_input').value;
+            const name = document.getElementById('template_name_input').value;
+            
+            if (id === 'global') {
+                saveConfigOriginal();
+                return;
+            }
+            
+            if (!name) {
+                Swal.fire('ข้อผิดพลาด', 'กรุณาระบุชื่อรูปแบบประเมิน', 'error');
+                return;
+            }
+
+            Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            
+            let itemsArr = [];
+            if (configData && Array.isArray(configData.items)) {
+                itemsArr = configData.items;
+            } else if (Array.isArray(configData)) {
+                itemsArr = configData;
+            }
+
+            fetch('../api/templates.php?action=save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: id,
+                    name: name,
+                    items: itemsArr,
+                    items_json: JSON.stringify(configData)
+                })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success').then(() => {
+                        closeTemplateEditor();
+                        loadSettingsTemplatesList();
+                    });
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+
+        function deleteTemplate(id) {
+            Swal.fire({
+                title: 'ยืนยันการลบ?',
+                text: "คุณไม่สามารถกู้คืนรูปแบบที่ลบได้!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'ใช่, ลบเลย!',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    fetch('../api/templates.php?action=delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: id })
+                    })
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            Swal.fire('ลบแล้ว!', res.message, 'success');
+                            loadSettingsTemplatesList();
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                        }
+                    })
+                    .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+                }
+            });
+        }
+
+        // Override original saveConfig (no longer used, replaced by saveTemplateConfig)
+        function saveConfig() {
+            saveTemplateConfig();
+        }
+
+        // Form Teacher Dropdown Logic
+        let formTeachersList = [];
+        
+
+        function loadActiveTermForForm() {
+            fetch('../api/terms.php?action=list')
+                .then(res => res.json())
+                .then(res => {
+                    if(res.success) {
+                        const activeTerm = res.data.find(t => t.is_active == 1);
+                        if(activeTerm) {
+                            const y = document.getElementById('f_year');
+                            const t = document.getElementById('f_term');
+                            if(y) {
+                                y.value = activeTerm.year;
+                                y.readOnly = true;
+                                y.classList.add('bg-gray-100');
+                            }
+                            if(t) {
+                                t.value = activeTerm.term;
+                                t.readOnly = true;
+                                t.classList.add('bg-gray-100');
+                            }
+                        }
+                    }
+                });
+        }
+        let supervisionPaginator = null;
+        function loadSupervisionList() {
+            const tbody = document.getElementById('supervision-list-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = getSkeletonRows(4, 5);
+
+            const userRole = window.userRole;
+            
+            const initPaginator = () => {
+                if (!supervisionPaginator) {
+                    supervisionPaginator = new TablePaginator({
+                        tableBodyId: 'supervision-list-table-body',
+                        paginationContainerId: 'supervision-pagination',
+                        pageSize: 10,
+                        renderRow: (t) => {
+                            const dept = t.department || '-';
+                            const pos = t.position || 'ครู';
+                            return `
+                                <tr class="hover:bg-blue-50 transition search-row">
+                                    <td class="px-6 py-4 font-medium text-gray-900">${escapeHTML(t.display_name || t.username)}</td>
+                                    <td class="px-6 py-4 text-gray-600">${escapeHTML(dept)}</td>
+                                    <td class="px-6 py-4 text-gray-600">${escapeHTML(pos)}</td>
+                                    <td class="px-6 py-4 text-center">
+                                        <button onclick="startSupervisionForm(${t.id}, '${escapeHTML(t.display_name || t.username)}', '${escapeHTML(dept)}', '${escapeHTML(pos)}')" class="bg-school text-white px-4 py-2 rounded-xl text-sm hover:bg-school-dark transition shadow-sm">
+                                            <i class="fas fa-edit mr-1"></i> ประเมิน
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                        },
+                        filter: (items) => {
+                            const input = document.getElementById('searchSupervision') ? document.getElementById('searchSupervision').value.toLowerCase() : '';
+                            return items.filter(t => 
+                                (t.username && t.username.toLowerCase().includes(input)) ||
+                                (t.display_name && t.display_name.toLowerCase().includes(input)) ||
+                                (t.department && t.department.toLowerCase().includes(input)) ||
+                                (t.position && t.position.toLowerCase().includes(input))
+                            );
+                        }
+                    });
+                }
+            };
+            
+            if (userRole === 'admin') {
+                fetch('../api/user.php?action=list')
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            const teachers = res.data.filter(u => u.username !== 'admin');
+                            initPaginator();
+                            supervisionPaginator.setData(teachers);
+                        } else {
+                            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
+                        }
+                    })
+                    .catch(err => {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">เกิดข้อผิดพลาดในการเชื่อมต่อ</td></tr>';
+                    });
+            } else {
+                Promise.all([
+                    fetch('../api/assignments.php?action=list').then(res => res.json()),
+                    fetch('../api/user.php?action=list').then(res => res.json())
+                ]).then(([assignRes, userRes]) => {
+                    if (assignRes.success && userRes.success) {
+                        const assignments = assignRes.data;
+                        const users = userRes.data;
+                        const currentUserId = window.userId;
+                        
+                        const uniqueTeachers = [];
+                        assignments.forEach(a => {
+                            if (a.observer_id == currentUserId) {
+                                const tUser = users.find(u => u.id == a.teacher_id);
+                                if (tUser && !uniqueTeachers.some(x => x.id == tUser.id)) {
+                                    uniqueTeachers.push(tUser);
+                                }
+                            }
+                        });
+                        
+                        initPaginator();
+                        supervisionPaginator.setData(uniqueTeachers);
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
+                    }
+                }).catch(err => {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-red-500">เกิดข้อผิดพลาดในการเชื่อมต่อ</td></tr>';
+                });
+            }
+        }
+
+        function filterSupervision() {
+            if (supervisionPaginator) {
+                supervisionPaginator.applyFilter();
+            }
+        }
+
+        function startSupervisionForm(teacherId, teacherName, department, position) {
+            switchView('form');
+            loadFormTeachers().then(() => {
+                const select = document.getElementById('f_teacher');
+                if (select) {
+                    select.value = teacherId;
+                }
+                setSelectValueSafely('f_department', department !== '-' ? department : '');
+                const elPos = document.getElementById('f_teacher_pos');
+                if (elPos) elPos.value = position || 'ครู';
+                
+                // Trigger template loading for the selected teacher
+                teacherSelected(teacherId);
+            });
+        }
+
+        function loadFormTeachers() {
+            const select = document.getElementById('f_teacher');
+            if (!select) return Promise.resolve();
+            return fetch('../api/user.php?action=list')
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        // Allow all users to be evaluated
+                        formTeachersList = res.data;
+                        select.innerHTML = '<option value="">-- กรุณาเลือกครู --</option>';
+                        formTeachersList.forEach(t => {
+                            select.innerHTML += `<option value="${t.id}">${escapeHTML(t.display_name || t.username)}</option>`;
+                        });
+                    }
+                });
+        }
+
+        function teacherSelected(teacherId) {
+            if (!teacherId) return;
+            const teacher = formTeachersList.find(t => t.id == teacherId);
+            if (teacher) {
+                if (teacher.department) {
+                    const deptEl = document.getElementById('f_department');
+                    if (deptEl) deptEl.value = teacher.department;
+                }
+                if (teacher.position) {
+                    const posEl = document.getElementById('f_teacher_pos');
+                    if (posEl) posEl.value = teacher.position;
+                }
+                
+                if (teacher.template_id) {
+                    loadConfigByTemplateId(teacher.template_id);
+                } else {
+                    loadConfig(); // Default
+                }
+            }
+        }
+
+        function loadConfigByTemplateId(templateId) {
+            const tbody = document.getElementById('eval-table-body');
+            if (tbody && typeof getSkeletonRows === 'function') tbody.innerHTML = getSkeletonRows(7, 5);
+            fetch('../api/templates.php?action=get&id=' + templateId)
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        try {
+                            configData = JSON.parse(res.template.items_json);
+                            if (typeof configData === 'string') configData = JSON.parse(configData);
+                        } catch(e) {
+                            configData = { items: [] };
+                        }
+                        renderEvalTable();
+                    }
+                });
+        }
+
+        // --- Terms Management ---
+        function loadTerms() {
+            const tbody = document.getElementById('terms-table-body');
+            if (tbody) tbody.innerHTML = getSkeletonRows(4, 3);
+            
+            fetch('../api/terms.php?action=list')
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        if (!tbody) return;
+                        tbody.innerHTML = '';
+                        if (res.data.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="4" class="py-4 text-gray-500">ยังไม่มีข้อมูลภาคเรียน</td></tr>';
+                            return;
+                        }
+                        res.data.forEach(t => {
+                            const badge = t.is_active == 1 
+                                ? '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full"><i class="fas fa-check-circle mr-1"></i>ปัจจุบัน</span>'
+                                : '<span class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">ไม่ได้ใช้</span>';
+                            const btnActive = t.is_active == 1 
+                                ? '' 
+                                : `<button onclick="setActiveTerm(${t.id})" class="text-blue-500 hover:text-blue-700 mx-1" title="ตั้งเป็นปัจจุบัน"><i class="fas fa-check"></i></button>`;
+                            
+                            tbody.innerHTML += `
+                                <tr class="hover:bg-blue-50">
+                                    <td class="px-6 py-4">${t.year}</td>
+                                    <td class="px-6 py-4">ภาคเรียนที่ ${t.term}</td>
+                                    <td class="px-6 py-4">${badge}</td>
+                                    <td class="px-6 py-4">
+                                        ${btnActive}
+                                        <button onclick="deleteTerm(${t.id})" class="text-red-500 hover:text-red-700 mx-1"><i class="fas fa-trash"></i></button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                    }
+                });
+        }
+
+        function openTermModal() {
+            document.getElementById('term-modal').classList.remove('hidden');
+        }
+
+        function closeTermModal() {
+            document.getElementById('term-modal').classList.add('hidden');
+        }
+
+        function saveNewTerm() {
+            const year = document.getElementById('term_year_input').value;
+            const term = document.getElementById('term_input').value;
+            const isActive = document.getElementById('term_is_active_input').checked;
+
+            if (!year || !term) {
+                Swal.fire('ข้อผิดพลาด', 'กรุณาระบุภาคเรียนและปีการศึกษา', 'error');
+                return;
+            }
+
+            Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            fetch('../api/terms.php?action=create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year, term, is_active: isActive })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success');
+                    closeTermModal();
+                    loadTerms();
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+
+        function setActiveTerm(id) {
+            Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            fetch('../api/terms.php?action=set_active', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success');
+                    loadTerms();
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+
+        function deleteTerm(id) {
+            Swal.fire({
+                title: 'ยืนยันการลบ?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'ลบเลย!',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    fetch('../api/terms.php?action=delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id })
+                    })
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            Swal.fire('สำเร็จ', res.message, 'success');
+                            loadTerms();
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                        }
+                    })
+                    .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+                }
+            });
+        }
+        let assignmentsPaginator = null;
+        function loadAssignments() {
+            const tbody = document.getElementById('assignments-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = getSkeletonRows(5, 5);
+
+            fetch('../api/assignments.php?action=list')
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        if (!assignmentsPaginator) {
+                            assignmentsPaginator = new TablePaginator({
+                                tableBodyId: 'assignments-table-body',
+                                paginationContainerId: 'assignments-pagination',
+                                pageSize: 10,
+                                renderRow: (a) => {
+                                    const statusBadge = a.status === 'pending'
+                                        ? '<span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">รอดำเนินการ</span>'
+                                        : '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">เสร็จสิ้น</span>';
+                                    const displayYear = a.term_year || a.year || '';
+                                    const displayTerm = a.term_name || (a.term ? 'ภาคเรียนที่ ' + a.term : '');
+                                    const termYearText = displayYear ? `${displayYear}/${displayTerm}` : displayTerm;
+                                    return `
+                                        <tr class="hover:bg-blue-50 transition search-row">
+                                            <td class="px-6 py-4 text-center">${escapeHTML(termYearText)}</td>
+                                            <td class="px-6 py-4">${escapeHTML(a.observer_name || '')}</td>
+                                            <td class="px-6 py-4">${escapeHTML(a.teacher_name || '')}</td>
+                                            <td class="px-6 py-4 text-center">${statusBadge}</td>
+                                            <td class="px-6 py-4 text-center">
+                                                <button onclick="editAssignment('${a.id}', '${a.term_id}', '${a.observer_id}', '${a.teacher_id}')" class="text-blue-500 hover:text-blue-700 mr-3"><i class="fas fa-edit"></i></button>
+                                                <button onclick="deleteAssignment('${a.id}')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                },
+                                filter: (items) => {
+                                    const input = document.getElementById('searchAssignments') ? document.getElementById('searchAssignments').value.toLowerCase() : '';
+                                    return items.filter(a => 
+                                        (a.term_year && String(a.term_year).toLowerCase().includes(input)) ||
+                                        (a.year && String(a.year).toLowerCase().includes(input)) ||
+                                        (a.term_name && String(a.term_name).toLowerCase().includes(input)) ||
+                                        (a.observer_name && String(a.observer_name).toLowerCase().includes(input)) ||
+                                        (a.teacher_name && String(a.teacher_name).toLowerCase().includes(input)) ||
+                                        (a.status && (a.status === 'pending' ? 'รอดำเนินการ' : 'เสร็จสิ้น').includes(input))
+                                    );
+                                }
+                            });
+                        }
+                        
+                        assignmentsPaginator.setData(res.data);
+                    }
+                });
+        }
+
+        function filterAssignments() {
+            if (assignmentsPaginator) {
+                assignmentsPaginator.applyFilter();
+            }
+        }
+
+        function loadAssignmentDropdowns() {
+            fetch('../api/terms.php?action=list')
+                .then(res => res.json())
+                .then(res => {
+                    if(res.success) {
+                        const select = document.getElementById('assign_term_id');
+                        if(!select) return;
+                        select.innerHTML = '<option value="">-- กรุณาเลือก --</option>';
+                        res.data.forEach(t => {
+                            select.innerHTML += `<option value="${t.id}">${t.year} ภาคเรียนที่ ${t.term}</option>`;
+                        });
+                    }
+                });
+            
+            fetch('../api/user.php?action=list')
+                .then(res => res.json())
+                .then(res => {
+                    if(res.success) {
+                        const oList = document.getElementById('assign_observer_list');
+                        const tList = document.getElementById('assign_teacher_list');
+                        if(!oList || !tList) return;
+                        oList.innerHTML = '';
+                        tList.innerHTML = '';
+                        res.data.forEach(u => {
+                            const name = u.display_name || u.username;
+                            oList.innerHTML += `<label class="flex items-center space-x-2 p-1 hover:bg-gray-50 cursor-pointer"><input type="checkbox" value="${u.id}" class="observer-cb rounded text-school border-gray-300 focus:ring-school"><span>${escapeHTML(name)}</span></label>`;
+                            if (u.role === 'teacher') {
+                                tList.innerHTML += `<label class="flex items-center space-x-2 p-1 hover:bg-gray-50 cursor-pointer"><input type="checkbox" value="${u.id}" class="teacher-cb rounded text-school border-gray-300 focus:ring-school"><span>${escapeHTML(name)}</span></label>`;
+                            }
+                        });
+                    }
+                });
+        }
+
+        function openAssignmentModal() {
+            document.getElementById('assignment-modal').classList.remove('hidden');
+            loadAssignmentDropdowns();
+        }
+
+        function closeAssignmentModal() {
+            document.getElementById('assignment-modal').classList.add('hidden');
+        }
+
+        function saveNewAssignment() {
+            const term_id = document.getElementById('assign_term_id').value;
+            const observer_ids = Array.from(document.querySelectorAll('.observer-cb:checked')).map(cb => cb.value);
+            const teacher_ids = Array.from(document.querySelectorAll('.teacher-cb:checked')).map(cb => cb.value);
+
+            if(!term_id || observer_ids.length === 0 || teacher_ids.length === 0) {
+                Swal.fire('ข้อผิดพลาด', 'กรุณาเลือกข้อมูลให้ครบถ้วนอย่างน้อย 1 คน', 'error');
+                return;
+            }
+
+            Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            fetch('../api/assignments.php?action=create_multiple', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({term_id, observer_ids, teacher_ids})
+            })
+            .then(res => res.json())
+            .then(res => {
+                if(res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success');
+                    closeAssignmentModal();
+                    loadAssignments();
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+        function editAssignment(id, term_id, observer_id, teacher_id) {
+            document.getElementById('edit_assign_id').value = id;
+            document.getElementById('edit-assignment-modal').classList.remove('hidden');
+
+            fetch('../api/terms.php?action=list').then(res => res.json()).then(res => {
+                if(res.success) {
+                    const select = document.getElementById('edit_assign_term_id');
+                    select.innerHTML = '';
+                    res.data.forEach(t => {
+                        select.innerHTML += `<option value="${t.id}" ${t.id == term_id ? 'selected' : ''}>${t.year} ภาคเรียนที่ ${t.term}</option>`;
+                    });
+                }
+            });
+
+            fetch('../api/user.php?action=list').then(res => res.json()).then(res => {
+                if(res.success) {
+                    const oSelect = document.getElementById('edit_assign_observer_id');
+                    const tSelect = document.getElementById('edit_assign_teacher_id');
+                    oSelect.innerHTML = '';
+                    tSelect.innerHTML = '';
+                    res.data.forEach(u => {
+                        const name = u.display_name || u.username;
+                        oSelect.innerHTML += `<option value="${u.id}" ${u.id == observer_id ? 'selected' : ''}>${escapeHTML(name)}</option>`;
+                        if (u.role === 'teacher') {
+                            tSelect.innerHTML += `<option value="${u.id}" ${u.id == teacher_id ? 'selected' : ''}>${escapeHTML(name)}</option>`;
+                        }
+                    });
+                }
+            });
+        }
+
+        function closeEditAssignmentModal() {
+            document.getElementById('edit-assignment-modal').classList.add('hidden');
+        }
+
+        function saveEditAssignment() {
+            const id = document.getElementById('edit_assign_id').value;
+            const term_id = document.getElementById('edit_assign_term_id').value;
+            const observer_id = document.getElementById('edit_assign_observer_id').value;
+            const teacher_id = document.getElementById('edit_assign_teacher_id').value;
+
+            if(!term_id || !observer_id || !teacher_id) {
+                Swal.fire('ข้อผิดพลาด', 'กรุณาเลือกข้อมูลให้ครบถ้วน', 'error');
+                return;
+            }
+
+            Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            fetch('../api/assignments.php?action=update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id, term_id, observer_id, teacher_id})
+            })
+            .then(res => res.json())
+            .then(res => {
+                if(res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success');
+                    closeEditAssignmentModal();
+                    loadAssignments();
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+
+        
+        // ================= Edit System =================
+        let editModeId = null;
+
+        
+        // ================= Edit Form System =================
+        let editSignTeacher, editSignObserver;
+        let editTotalMaxScore = 0;
+
+        function initEditSignatures() {
+            if (editSignTeacher) return; // already init
+            const eT = document.getElementById('editPadTeacher');
+            const eO = document.getElementById('editPadObserver');
+            if (eT && eO) {
+                editSignTeacher = new SignaturePad(eT, { backgroundColor: 'rgb(255, 255, 255)', penColor: 'rgb(30, 64, 175)' });
+                editSignObserver = new SignaturePad(eO, { backgroundColor: 'rgb(255, 255, 255)', penColor: 'rgb(30, 64, 175)' });
+            }
+        }
+
+        function clearEditPadTeacher() { if(editSignTeacher) editSignTeacher.clear(); }
+        function clearEditPadObserver() { if(editSignObserver) editSignObserver.clear(); }
+
+        function renderEditEvalTable() {
+            const tbody = document.getElementById('edit-eval-table-body');
+            if(!tbody) return;
+            tbody.innerHTML = '';
+            
+            if (!configData || !configData.items || configData.items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">ไม่พบข้อมูลแบบประเมิน กรุณาตั้งค่าก่อนใช้งาน (' + JSON.stringify(configData) + ')</td></tr>';
+                return;
+            }
+
+            let mainCounter = 0;
+            let subCounter = 0;
+            editTotalMaxScore = 0;
+
+            configData.items.forEach(item => {
+                if (item.type === 'main') {
+                    mainCounter++; subCounter = 0;
+                    tbody.insertAdjacentHTML('beforeend', `<tr class="topic-main"><td class="text-center">${mainCounter}.</td><td colspan="6">${item.text}</td></tr>`);
+                } else {
+                    subCounter++;
+                    let prefix = mainCounter > 0 ? mainCounter + "." + subCounter : subCounter;
+                    editTotalMaxScore += 5;
+                    tbody.insertAdjacentHTML('beforeend', `
+                        <tr class="hover:bg-blue-50 transition">
+                            <td class="text-center text-sm text-gray-500">${prefix}</td>
+                            <td class="topic-sub">${item.text}</td>
+                            <td class="text-center"><input type="radio" name="edit_${item.id}" value="5" onchange="calcEditScore()" required></td>
+                            <td class="text-center"><input type="radio" name="edit_${item.id}" value="4" onchange="calcEditScore()"></td>
+                            <td class="text-center"><input type="radio" name="edit_${item.id}" value="3" onchange="calcEditScore()"></td>
+                            <td class="text-center"><input type="radio" name="edit_${item.id}" value="2" onchange="calcEditScore()"></td>
+                            <td class="text-center"><input type="radio" name="edit_${item.id}" value="1" onchange="calcEditScore()"></td>
+                        </tr>
+                    `);
+                }
+            });
+            document.getElementById('edit-display-max').innerText = editTotalMaxScore;
+        }
+
+        function calcEditScore() {
+            const radios = document.querySelectorAll('#edit-eval-table-body input[type="radio"]:checked');
+            let sum = 0;
+            radios.forEach(r => sum += parseInt(r.value));
+
+            const max = parseInt(document.getElementById('edit-display-max').innerText) || 1;
+            const percent = ((sum / max) * 100).toFixed(2);
+
+            let level = "ไม่ผ่าน", color = "text-red-600 border-red-200";
+            if(window.evaluationCriteria && window.evaluationCriteria.length > 0) {
+                const criteria = window.evaluationCriteria;
+                for (let i = 0; i < criteria.length; i++) {
+                    if (percent >= criteria[i].min && percent <= criteria[i].max) {
+                        level = criteria[i].name;
+                        color = `text-${criteria[i].color}-600 border-${criteria[i].color}-200`;
+                        break;
+                    }
+                }
+            }
+
+            document.getElementById('edit-display-total').innerText = sum;
+            document.getElementById('edit-display-percent').innerText = percent;
+
+            const lvlEl = document.getElementById('edit-display-level');
+            lvlEl.innerText = level;
+            lvlEl.className = `font-bold text-xl px-4 py-1 rounded bg-white shadow-sm border ${color}`;
+        }
+
+        async function submitEditForm(e) {
+            e.preventDefault();
+
+            const scores = {};
+            configData.items.forEach(item => {
+                if (item.type === 'sub') {
+                    const checked = document.querySelector(`#edit-eval-table-body input[name="edit_${item.id}"]:checked`);
+                    scores[item.id] = checked ? checked.value : 0;
+                }
+            });
+
+            const getBase64 = async (id) => {
+                const fileInput = document.getElementById(id);
+                if (fileInput && fileInput.files.length > 0) return await toBase64(fileInput.files[0]);
+                return "";
+            };
+
+            const f1 = await getBase64('ef_file1');
+            const f2 = await getBase64('ef_file2');
+            const f3 = await getBase64('ef_file3');
+            const f4 = await getBase64('ef_file4');
+
+            const stData = editSignTeacher.isEmpty() ? "" : editSignTeacher.toDataURL();
+            const soData = editSignObserver.isEmpty() ? "" : editSignObserver.toDataURL();
+
+            const formData = {
+                id: editModeId,
+                occurrence: document.getElementById('ef_occurrence').value,
+                term: document.getElementById('ef_term').value,
+                year: document.getElementById('ef_year').value,
+                teacher: document.getElementById('ef_teacher').options[document.getElementById('ef_teacher').selectedIndex].text,
+                teacherId: document.getElementById('ef_teacher').value,
+                department: document.getElementById('ef_department').value,
+                subject: document.getElementById('ef_subject').value,
+                className: document.getElementById('ef_class').value,
+                date: document.getElementById('ef_date').value,
+                time: document.getElementById('ef_time').value,
+                observer: document.getElementById('ef_observer').value,
+                teacherPosition: document.getElementById('ef_teacher_pos').value,
+                observerPosition: document.getElementById('ef_observer_pos').value,
+                scores: scores,
+                total: document.getElementById('edit-display-total').innerText,
+                percent: document.getElementById('edit-display-percent').innerText,
+                level: document.getElementById('edit-display-level').innerText,
+                strengths: document.getElementById('ef_strengths').value,
+                improvements: document.getElementById('ef_improvements').value,
+                suggestions: document.getElementById('ef_suggestions').value,
+                signTeacher: stData,
+                signObserver: soData,
+                attachedFileBase64_1: f1,
+                attachedFileBase64_2: f2,
+                attachedFileBase64_3: f3,
+                attachedFileBase64_4: f4
+            };
+
+            Swal.fire({
+                title: 'กำลังบันทึกข้อมูล...',
+                allowOutsideClick: false, didOpen: () => Swal.showLoading()
+            });
+
+            fetch('../api/api.php?action=updateReport', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.success) {
+                    Swal.fire('สำเร็จ', res.message, 'success').then(() => {
+                        document.getElementById('editEvalForm').reset();
+                        editSignTeacher.clear(); editSignObserver.clear();
+                        switchView('report');
+                    });
+                } else {
+                    Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                }
+            })
+            .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+        }
+
+        function previewEditImage(input, previewId) {
+            const num = previewId.replace('preview', '');
+            const preview = document.getElementById('edit-preview' + num);
+            const container = document.getElementById('edit-previewContainer' + num);
+
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    if (preview) preview.src = e.target.result;
+                    if (container) container.classList.remove('hidden');
+                }
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                if (preview) preview.src = "";
+                if (container) container.classList.add('hidden');
+            }
+        }
+        function removeEditImage(previewId) {
+            const num = previewId.replace('preview', '');
+            const fileInput = document.getElementById('ef_file' + num);
+            const preview = document.getElementById('edit-preview' + num);
+            const container = document.getElementById('edit-previewContainer' + num);
+            
+            if (fileInput) fileInput.value = '';
+            if (preview) preview.src = '';
+            if (container) container.classList.add('hidden');
+        }
+
+        function editTeacherSelected(id) {
+            if(!id) return;
+            const t = formTeachersList.find(x => x.id == id);
+            if(t) {
+                setSelectValueSafely('ef_department', t.department || '');
+                document.getElementById('ef_teacher_pos').value = t.position || 'ครู';
+            }
+        }
+
+        function editReport(id) {
+            editModeId = id;
+            Swal.fire({
+                title: 'กำลังดึงข้อมูล...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+
+            Promise.all([
+                fetch('../api/user.php?action=list').then(r => r.json()),
+                fetch(`../api/api.php?action=getReportById&id=${id}`).then(r => r.json())
+            ]).then(([teachersRes, reportRes]) => {
+                if (teachersRes.success && reportRes.success) {
+                    formTeachersList = teachersRes.data;
+                    const data = reportRes.data;
+                    
+                    // Find teacher template ID
+                    const tInfo = formTeachersList.find(x => x.id == data.teacher_id || x.display_name === data.teacher || x.username === data.teacher);
+                    const templateId = tInfo ? tInfo.template_id : null;
+                    
+                    let configPromise;
+                    if (templateId) {
+                        configPromise = fetch('../api/templates.php?action=get&id=' + templateId).then(r => r.json());
+                    } else {
+                        configPromise = fetch('../api/api.php?action=getConfig').then(r => r.json());
+                    }
+                    
+                    configPromise.then(configRes => {
+                        Swal.close();
+                        
+                        // Parse template config
+                        if (templateId) {
+                            if (configRes.success) {
+                                try {
+                                    configData = JSON.parse(configRes.template.items_json);
+                                    if (typeof configData === 'string') configData = JSON.parse(configData);
+                                } catch(e) {
+                                    configData = { items: [] };
+                                }
+                            }
+                        } else {
+                            if (configRes.items) {
+                                configData = configRes;
+                            } else {
+                                configData = { items: [] };
+                            }
+                        }
+                        
+                        // Render and switch view
+                        initEditSignatures();
+                        renderEditEvalTable();
+                        
+                        switchView('edit_form');
+                        
+                        document.getElementById('ef_occurrence').value = data.occurrence;
+                        document.getElementById('ef_term').value = data.term;
+                        document.getElementById('ef_year').value = data.year;
+                        
+                        // Populate teachers for edit form
+                        const select = document.getElementById('ef_teacher');
+                        if (select) {
+                            select.innerHTML = '<option value="">-- กรุณาเลือกครู --</option>';
+                            formTeachersList.forEach(t => {
+                                select.innerHTML += `<option value="${t.id}">${escapeHTML(t.display_name || t.username)}</option>`;
+                            });
+                            if (tInfo) {
+                                select.value = tInfo.id;
+                            } else if (data.teacher_id) {
+                                select.value = data.teacher_id;
+                            } else {
+                                select.value = '';
+                            }
+                        }
+
+                        setSelectValueSafely('ef_department', data.department);
+                        document.getElementById('ef_subject').value = data.subject;
+                        document.getElementById('ef_class').value = data.class;
+                        document.getElementById('ef_date').value = data.date;
+                        document.getElementById('ef_time').value = data.time;
+                        document.getElementById('ef_observer').value = data.observer;
+                        document.getElementById('ef_teacher_pos').value = data.teacher_position;
+                        document.getElementById('ef_observer_pos').value = data.observer_position;
+                        
+                        document.getElementById('ef_strengths').value = data.strengths;
+                        document.getElementById('ef_improvements').value = data.improvements;
+                        document.getElementById('ef_suggestions').value = data.suggestions;
+
+                        let scoresRaw = data.scores_json || data.scores || '{}';
+                        if (typeof scoresRaw === 'object') scoresRaw = JSON.stringify(scoresRaw);
+                        const scores = JSON.parse(scoresRaw) || {};
+                        // Fallback map for older seeded records (prepare, media, etc.)
+                        const oldKeyMap = {
+                            'prepare': 'item_prep_1',
+                            'media': 'item_prep_3',
+                            'participate': 'item_teach_2',
+                            'evaluate': 'item_eval_1',
+                            'personality': 'item_teach_4'
+                        };
+                        for (let [key, value] of Object.entries(scores)) {
+                            let radio = document.querySelector(`#edit-eval-table-body input[name="edit_${key}"][value="${value}"]`);
+                            if (!radio && oldKeyMap[key]) {
+                                radio = document.querySelector(`#edit-eval-table-body input[name="edit_${oldKeyMap[key]}"][value="${value}"]`);
+                            }
+                            if(radio) radio.checked = true;
+                        }
+                        
+                        if (data.sign_teacher) editSignTeacher.fromDataURL(data.sign_teacher);
+                        if (data.sign_observer) editSignObserver.fromDataURL(data.sign_observer);
+
+                        for (let i = 1; i <= 4; i++) {
+                            const fileUrl = data['file_url' + i];
+                            const previewImg = document.getElementById('edit-preview' + i);
+                            const previewContainer = document.getElementById('edit-previewContainer' + i);
+                            if (fileUrl && previewImg && previewContainer) {
+                                let srcPath = fileUrl;
+                                if (!srcPath.startsWith('http') && !srcPath.startsWith('../') && !srcPath.startsWith('/')) {
+                                    srcPath = '../' + srcPath;
+                                }
+                                previewImg.src = srcPath;
+                                previewContainer.classList.remove('hidden');
+                            } else if (previewImg && previewContainer) {
+                                previewImg.src = '';
+                                previewContainer.classList.add('hidden');
+                            }
+                        }
+
+                        calcEditScore();
+                    });
+                } else {
+                    Swal.close();
+                    Swal.fire('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลเพื่อแก้ไขได้', 'error');
+                }
+            }).catch(err => {
+                Swal.close();
+                Swal.fire('ผิดพลาด', 'เกิดข้อผิดพลาดในการโหลดข้อมูล: ' . err.message, 'error');
+                console.error(err);
+            });
+        }
+        function deleteAssignment(id) {
+            Swal.fire({
+                title: 'ยืนยันการลบ?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'ลบเลย!',
+                cancelButtonText: 'ยกเลิก'
+            }).then(result => {
+                if(result.isConfirmed) {
+                    Swal.fire({ title: 'กำลังลบ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    fetch('../api/assignments.php?action=delete', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({id})
+                    }).then(res => res.json()).then(res => {
+                        if(res.success) {
+                            Swal.fire('สำเร็จ', res.message, 'success');
+                            loadAssignments();
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                        }
+                    })
+                    .catch(err => Swal.fire('ข้อผิดพลาด', err.message, 'error'));
+                }
+            });
+        }
+
+        // ================= System Activity Logs Management =================
+        let logsPaginator = null;
+        function loadSystemLogs() {
+            const tbody = document.getElementById('logs-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = getSkeletonRows(6, 8);
+
+            fetch('../api/api.php?action=listLogs')
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        if (!logsPaginator) {
+                            logsPaginator = new TablePaginator({
+                                tableBodyId: 'logs-table-body',
+                                paginationContainerId: 'logs-pagination',
+                                pageSize: 15,
+                                renderRow: (log) => {
+                                    // กำหนด Badge สีต่างกันสำหรับแต่ละ Action
+                                    let badgeColor = 'bg-gray-100 text-gray-800';
+                                    let actionText = log.action;
+                                    
+                                    if (log.action === 'login_success') {
+                                        badgeColor = 'bg-green-100 text-green-800';
+                                        actionText = 'ล็อกอินสำเร็จ';
+                                    } else if (log.action === 'login_failed') {
+                                        badgeColor = 'bg-red-100 text-red-800 font-bold';
+                                        actionText = 'ล็อกอินล้มเหลว';
+                                    } else if (log.action === 'logout') {
+                                        badgeColor = 'bg-blue-100 text-blue-800';
+                                        actionText = 'ออกจากระบบ';
+                                    } else if (log.action.includes('create')) {
+                                        badgeColor = 'bg-teal-100 text-teal-800';
+                                        actionText = 'เพิ่มข้อมูล';
+                                    } else if (log.action.includes('update')) {
+                                        badgeColor = 'bg-yellow-100 text-yellow-800';
+                                        actionText = 'แก้ไขข้อมูล';
+                                    } else if (log.action.includes('delete')) {
+                                        badgeColor = 'bg-rose-100 text-rose-800 font-bold';
+                                        actionText = 'ลบข้อมูล';
+                                    } else if (log.action === 'import_csv') {
+                                        badgeColor = 'bg-purple-100 text-purple-800';
+                                        actionText = 'นำเข้า CSV';
+                                    }
+
+                                    // ซ่อน/โชว์ User Agent
+                                    const escapedUA = escapeHTML(log.user_agent);
+                                    const uaButton = log.user_agent
+                                        ? `<button onclick="Swal.fire({title: 'รายละเอียดเบราว์เซอร์', text: '${escapedUA.replace(/'/g, "\\'")}', icon: 'info'})" class="text-blue-500 hover:text-blue-700"><i class="fas fa-info-circle text-lg"></i></button>`
+                                        : '-';
+
+                                    return `
+                                        <tr class="hover:bg-blue-50 transition search-row">
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${escapeHTML(formatDateTimeThai(log.date_formatted || log.created_at))}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                <div class="font-bold text-gray-800">${escapeHTML(log.username)}</div>
+                                                <div class="text-xs text-gray-400">ID: ${escapeHTML(log.user_id || 'Guest')}</div>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeColor}">${escapeHTML(actionText)}</span>
+                                            </td>
+                                            <td class="px-6 py-4 text-sm text-gray-700">${escapeHTML(log.description)}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-center font-mono text-gray-600">${escapeHTML(log.ip_address)}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-center">${uaButton}</td>
+                                        </tr>
+                                    `;
+                                },
+                                filter: (items) => {
+                                    const searchInput = document.getElementById('searchLogs') ? document.getElementById('searchLogs').value.toLowerCase() : '';
+                                    const actionFilter = document.getElementById('filterLogAction') ? document.getElementById('filterLogAction').value : '';
+                                    
+                                    return items.filter(log => {
+                                        const username = log.username || '';
+                                        const description = log.description || '';
+                                        const ipAddress = log.ip_address || '';
+                                        
+                                        const matchesSearch = 
+                                            String(username).toLowerCase().includes(searchInput) ||
+                                            String(description).toLowerCase().includes(searchInput) ||
+                                            String(ipAddress).toLowerCase().includes(searchInput);
+                                            
+                                        const matchesAction = 
+                                            !actionFilter || 
+                                            log.action === actionFilter;
+                                            
+                                        return matchesSearch && matchesAction;
+                                    });
+                                }
+                            });
+                        }
+                        const sortedLogs = (res.data || []).sort((a, b) => {
+                            const timeA = new Date(a.created_at || a.date_formatted || a.id || 0).getTime();
+                            const timeB = new Date(b.created_at || b.date_formatted || b.id || 0).getTime();
+                            return timeB - timeA;
+                        });
+                        logsPaginator.setData(sortedLogs);
+                    } else {
+                        Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                    }
+                })
+                .catch(err => {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-red-500">ดึงข้อมูลล้มเหลว: ${err.message}</td></tr>`;
+                });
+        }
+
+        function filterLogs() {
+            if (logsPaginator) {
+                logsPaginator.applyFilter();
+            }
+        }
+
+        function changeLogsPageSize() {
+            if (logsPaginator) {
+                const newSize = document.getElementById('logsPageSize').value;
+                logsPaginator.setPageSize(newSize);
+            }
+        }
+        // ================= Analytics Management =================
+        let analyticsLevelChartInstance = null;
+        let analyticsDeptChartInstance = null;
+
+        function loadAnalyticsData() {
+            const yearEl = document.getElementById('analyticsYear');
+            const termEl = document.getElementById('analyticsTerm');
+            const year = yearEl ? yearEl.value : 'all';
+            const term = termEl ? termEl.value : 'all';
+            
+            showAnalyticsSkeleton();
+            
+            const fetchYear = (year === 'all') ? '' : year;
+            const fetchTerm = (term === 'all') ? '' : term;
+            
+            fetch(`../api/api.php?action=getAnalyticsData&year=${fetchYear}&term=${fetchTerm}`)
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        const data = res.data;
+                        
+                        // Update Stat Cards (4 Cards)
+                        const recEl = document.getElementById('stat-total-records');
+                        const allTeachEl = document.getElementById('stat-total-all-teachers');
+                        const rateEl = document.getElementById('stat-supervised-rate');
+                        const supCountEl = document.getElementById('stat-supervised-count');
+                        const allTeachSubEl = document.getElementById('stat-all-teachers-sub');
+                        const avgEl = document.getElementById('stat-avg-score');
+                        
+                        const overview = data.overview || {};
+                        const totalRecords = overview.total_records !== undefined ? overview.total_records : 0;
+                        const totalAllTeachers = overview.total_all_teachers !== undefined ? overview.total_all_teachers : (overview.total_teachers || 0);
+                        const supervisedTeachers = overview.supervised_teachers !== undefined ? overview.supervised_teachers : (overview.total_teachers || 0);
+                        const supervisedRate = overview.supervised_rate !== undefined ? overview.supervised_rate : (totalAllTeachers > 0 ? ((supervisedTeachers / totalAllTeachers) * 100).toFixed(1) : '0.0');
+                        const avgScore = overview.avg_score !== undefined ? overview.avg_score : '0.00';
+
+                        if (recEl) recEl.innerText = totalRecords;
+                        if (allTeachEl) allTeachEl.innerText = totalAllTeachers;
+                        if (rateEl) rateEl.innerText = supervisedRate + '%';
+                        if (supCountEl) supCountEl.innerText = supervisedTeachers;
+                        if (allTeachSubEl) allTeachSubEl.innerText = totalAllTeachers;
+                        if (avgEl) avgEl.innerText = avgScore;
+                        
+                        // Render Level Pie Chart
+                        renderAnalyticsLevelChart(data.levels || []);
+                        
+                        // Render Dept Bar Chart
+                        renderAnalyticsDeptChart(data.departments || []);
+                    } else {
+                        Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                    }
+                })
+                .catch(err => console.error('Error fetching analytics:', err))
+                .finally(() => {
+                    hideAnalyticsSkeleton();
+                });
+        }
+
+        function showAnalyticsSkeleton() {
+            ['stat-total-records', 'stat-total-all-teachers', 'stat-supervised-rate', 'stat-avg-score'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.innerHTML = `<span class="inline-block animate-pulse bg-white/40 h-8 w-16 rounded-md"></span>`;
+                }
+            });
+
+            ['analytics-skeleton-pie', 'analytics-skeleton-bar'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.remove('hidden');
+            });
+        }
+
+        function hideAnalyticsSkeleton() {
+            ['analytics-skeleton-pie', 'analytics-skeleton-bar'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+        }
+        
+        function renderAnalyticsLevelChart(levelsData) {
+            const ctx = document.getElementById('analyticsLevelChart');
+            if (!ctx) return;
+            
+            // Prepare default data structure
+            const levelStats = {'ดีมาก': 0, 'ดี': 0, 'พอใช้': 0, 'ปรับปรุง': 0};
+            levelsData.forEach(item => {
+                if (levelStats[item.level] !== undefined) {
+                    levelStats[item.level] = parseInt(item.count, 10);
+                }
+            });
+            
+            if (analyticsLevelChartInstance) {
+                analyticsLevelChartInstance.destroy();
+            }
+            
+            analyticsLevelChartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(levelStats),
+                    datasets: [{
+                        data: Object.values(levelStats),
+                        backgroundColor: [
+                            'rgba(34, 197, 94, 0.7)',
+                            'rgba(59, 130, 246, 0.7)',
+                            'rgba(245, 158, 11, 0.7)',
+                            'rgba(239, 68, 68, 0.7)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right' }
+                    }
+                }
+            });
+        }
+        
+        function renderAnalyticsDeptChart(deptData) {
+            const ctx = document.getElementById('analyticsDeptChart');
+            if (!ctx) return;
+            
+            const labels = deptData.map(item => item.department || 'ไม่ระบุ');
+            const scores = deptData.map(item => parseFloat(item.avg_score).toFixed(2));
+            
+            if (analyticsDeptChartInstance) {
+                analyticsDeptChartInstance.destroy();
+            }
+            
+            analyticsDeptChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'คะแนนเฉลี่ย (%)',
+                        data: scores,
+                        backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                        borderColor: 'rgb(99, 102, 241)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        function exportExecutiveExcel() {
+            const year = document.getElementById('analyticsYear') ? document.getElementById('analyticsYear').value : 'all';
+            const term = document.getElementById('analyticsTerm') ? document.getElementById('analyticsTerm').value : 'all';
+
+            Swal.fire({ title: 'กำลังเตรียมข้อมูลไฟล์ Excel...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            const fetchYear = year === 'all' ? '' : year;
+            const fetchTerm = term === 'all' ? '' : term;
+
+            fetch(`../api/api.php?action=getReportData&year=${fetchYear}&term=${fetchTerm}`)
+                .then(res => res.json())
+                .then(res => {
+                    Swal.close();
+                    if (!res.success || !res.data || res.data.length === 0) {
+                        Swal.fire('แจ้งเตือน', 'ไม่พบข้อมูลการนิเทศสำหรับปีการศึกษา/ภาคเรียนที่เลือก', 'info');
+                        return;
+                    }
+
+                    const headers = ['ลำดับ', 'วันที่นิเทศ', 'ปีการศึกษา', 'ภาคเรียน', 'ครูผู้รับการนิเทศ', 'กลุ่มสาระการเรียนรู้', 'วิชา', 'ชั้น', 'ผู้นิเทศ', 'คะแนนเฉลี่ย (%)', 'ระดับผลการนิเทศ'];
+                    let csvContent = '\uFEFF' + headers.join(',') + '\n';
+
+                    res.data.forEach((r, idx) => {
+                        const row = [
+                            idx + 1,
+                            `"${formatDateThai(r.date).replace(/"/g, '""')}"`,
+                            `"${(r.year || '').toString().replace(/"/g, '""')}"`,
+                            `"${(r.term || '').toString().replace(/"/g, '""')}"`,
+                            `"${(r.teacher || '').toString().replace(/"/g, '""')}"`,
+                            `"${(r.department || '').toString().replace(/"/g, '""')}"`,
+                            `"${(r.subject || '').toString().replace(/"/g, '""')}"`,
+                            `"${(r.class || '').toString().replace(/"/g, '""')}"`,
+                            `"${(r.observer || '').toString().replace(/"/g, '""')}"`,
+                            `"${(r.percent || '0').toString().replace(/"/g, '""')}"`,
+                            `"${(r.level || '').toString().replace(/"/g, '""')}"`
+                        ];
+                        csvContent += row.join(',') + '\n';
+                    });
+
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', `รายงานสรุปผู้บริหาร_ปี${fetchYear || 'ทั้งหมด'}_ภาคเรียน${fetchTerm || 'ทั้งหมด'}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                })
+                .catch(err => {
+                    Swal.close();
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถสร้างไฟล์ Excel ได้: ' + err.message, 'error');
+                });
+        }
+
+        function printExecutiveReport() {
+            const year = document.getElementById('analyticsYear') ? document.getElementById('analyticsYear').value : 'all';
+            const term = document.getElementById('analyticsTerm') ? document.getElementById('analyticsTerm').value : 'all';
+            
+            const targetUrl = typeof getNavUrl !== 'undefined'
+                ? getNavUrl('preview_executive', { year, term })
+                : `preview_executive.html?year=${year}&term=${term}`;
+                
+            window.open(targetUrl, '_blank');
+        }
+
+        window.showContactModal = function() {
+            if (typeof Swal === 'undefined') return;
+            Swal.fire({
+                title: '<i class="fab fa-facebook-messenger text-blue-600 mr-2"></i> ติดต่อขอใช้ระบบ',
+                html: `
+                    <div class="text-center p-2">
+                        <p class="text-gray-600 mb-6 text-sm font-medium">หากท่านมีความสนใจติดตั้งระบบนิเทศการสอน หรือติดต่อสอบถามเพิ่มเติม<br>ท่านสามารถส่งข้อความทักแชทติดต่อได้โดยตรงทางแฟนเพจครับ</p>
+                        
+                        <div class="mb-4">
+                            <a href="https://m.me/Krunoiedu" target="_blank" class="inline-flex items-center gap-2 bg-[#1877F2] hover:bg-[#166FE5] text-white font-extrabold px-6 py-3.5 rounded-xl transition duration-200 shadow-md hover:scale-105 transform">
+                                <i class="fab fa-facebook-messenger text-xl"></i> ทักแชทข้อความเพจ
+                            </a>
+                        </div>
+                        
+                        <p class="text-xs text-gray-400 mt-6 font-semibold"><i class="fas fa-smile text-yellow-500 mr-1"></i> ยินดีให้คำแนะนำและบริการติดตั้งระบบผ่านทางเพจครับ</p>
+                    </div>
+                `,
+                showConfirmButton: true,
+                confirmButtonText: 'ปิดหน้าต่าง',
+                confirmButtonColor: '#9ca3af',
+                customClass: {
+                    popup: 'rounded-2xl shadow-2xl border border-gray-100'
+                }
+            });
+        };
+
+        window.showDonationModal = function() {
+            if (typeof Swal === 'undefined') return;
+            Swal.fire({
+                title: '<i class="fas fa-heart text-rose-500 mr-2"></i> สนับสนุนค่าพัฒนาระบบ',
+                html: `
+                    <div class="text-center p-2">
+                        <p class="text-gray-600 mb-4 text-sm font-medium">หากระบบนี้ช่วยให้งานของท่านสะดวกและรวดเร็วขึ้น<br>ท่านสามารถสนับสนุนค่าน้ำชา/กาแฟให้กับผู้พัฒนาได้ผ่านช่องทางนี้ครับ</p>
+                        
+                        <div class="mb-4 inline-block bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
+                            <img src="https://promptpay.io/0821446629.png" alt="PromptPay QR Code" class="w-48 h-48 mx-auto object-contain">
+                        </div>
+                        
+                        <div class="mb-2">
+                            <a href="https://m.me/Krunoiedu" target="_blank" class="inline-flex items-center gap-2 bg-[#1877F2] hover:bg-[#166FE5] text-white font-extrabold px-5 py-2.5 rounded-xl transition duration-200 shadow-md hover:scale-105 transform">
+                                <i class="fab fa-facebook-messenger text-lg"></i> ส่งหลักฐานการโอนทางแชทเพจ
+                            </a>
+                        </div>
+                        
+                        <p class="text-xs text-gray-400 mt-6 font-semibold"><i class="fas fa-heart text-red-500 mr-1 animate-pulse"></i> ขอบคุณทุกการสนับสนุนและการใช้งานครับ</p>
+                    </div>
+                `,
+                showConfirmButton: true,
+                confirmButtonText: 'ปิดหน้าต่าง',
+                confirmButtonColor: '#3b82f6',
+                customClass: {
+                    popup: 'rounded-2xl shadow-2xl border border-gray-100'
+                }
+            });
+        };
+</script>
+</body>
+</html>

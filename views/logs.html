@@ -1,0 +1,72 @@
+<div id="view-logs" class="view-section view-hidden">
+    <div class="bg-white rounded-xl shadow-lg p-6 border border-blue-100">
+        <div class="flex justify-between items-center mb-6 border-b pb-4 flex-wrap gap-4">
+            <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-history text-school mr-2"></i> ประวัติกิจกรรมในระบบ</h2>
+            
+            <div class="flex flex-wrap gap-2 items-center flex-1 max-w-2xl ml-auto justify-end">
+                <!-- กรอง Action -->
+                <div class="w-48">
+                    <select id="filterLogAction" onchange="filterLogs()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-school focus:ring-1 focus:ring-school transition-colors">
+                        <option value="">-- กิจกรรมทั้งหมด --</option>
+                        <option value="login_success">ล็อกอินสำเร็จ (Login Success)</option>
+                        <option value="login_failed">ล็อกอินล้มเหลว (Login Failed)</option>
+                        <option value="logout">ออกจากระบบ (Logout)</option>
+                        <option value="create_user">สร้างบัญชีผู้ใช้ (Create User)</option>
+                        <option value="update_user">แก้ไขบัญชีผู้ใช้ (Update User)</option>
+                        <option value="delete_user">ลบบัญชีผู้ใช้ (Delete User)</option>
+                        <option value="import_csv">นำเข้า CSV (Import CSV)</option>
+                        <option value="bulk_assign_templates">ตั้งค่าเทมเพลตกลุ่ม (Bulk Assign)</option>
+                        <option value="create_record">สร้างบันทึกประเมิน (Create Record)</option>
+                        <option value="update_record">แก้ไขบันทึกประเมิน (Update Record)</option>
+                        <option value="create_assignment">มอบหมายงาน (Create Assignment)</option>
+                        <option value="update_assignment">แก้ไขงานมอบหมาย (Update Assignment)</option>
+                        <option value="delete_assignment">ลบงานมอบหมาย (Delete Assignment)</option>
+                        <option value="update_settings">อัปเดตตั้งค่าระบบ (Update Settings)</option>
+                    </select>
+                </div>
+                
+                <!-- แสดงหน้าละ -->
+                <div class="w-32">
+                    <select id="logsPageSize" onchange="changeLogsPageSize()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-school focus:ring-1 focus:ring-school transition-colors">
+                        <option value="15">15 รายการ</option>
+                        <option value="30">30 รายการ</option>
+                        <option value="50">50 รายการ</option>
+                        <option value="100">100 รายการ</option>
+                    </select>
+                </div>
+
+                <!-- ค้นหาคำสำคัญ -->
+                <div class="w-64">
+                    <div class="relative">
+                        <input type="text" id="searchLogs" onkeyup="filterLogs()" placeholder="ค้นหาชื่อผู้ใช้, รายละเอียด, IP..." class="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-school focus:ring-1 focus:ring-school transition-colors">
+                        <div class="absolute left-3 top-2.5 text-gray-400">
+                            <i class="fas fa-search"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="overflow-x-auto rounded-lg border border-blue-100 shadow-sm">
+            <table class="min-w-full divide-y divide-blue-200">
+                <thead class="bg-school text-white">
+                    <tr>
+                        <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider w-40">วันเวลาที่เกิด</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider w-36">ผู้ดำเนินการ</th>
+                        <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider w-36">กิจกรรม (Action)</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">รายละเอียด (Description)</th>
+                        <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider w-36">IP Address</th>
+                        <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider w-24">เบราว์เซอร์</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-blue-50" id="logs-table-body">
+                    <tr>
+                        <td colspan="6" class="text-center py-8 text-blue-500"><i class="fas fa-spinner fa-spin fa-2x"></i><br>กำลังโหลดข้อมูล...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div id="logs-pagination" class="mt-4"></div>
+    </div>
+</div>

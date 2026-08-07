@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <link rel="manifest" href="assets/manifest.json">
+    <link rel="apple-touch-icon" href="assets/img/app-icon.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบบันทึกการนิเทศการสอน</title>
+    <link rel="icon" type="image/png" id="school-logo-favicon" href="">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="assets/js/tailwind.config.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- Custom CSS & Animations -->
+    <style>
+        body {
+            font-family: 'Sarabun', 'Inter', sans-serif;
+            background-color: #f8fafc;
+            overflow-x: hidden;
+        }
+
+        /* Animated Mesh Gradient Background */
+        .mesh-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background: linear-gradient(135deg, #e0f2fe 0%, #ede9fe 50%, #dbeafe 100%);
+        }
+
+        /* Glowing Orbs */
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.6;
+            animation: float 20s infinite ease-in-out alternate;
+        }
+        
+        .orb-1 { width: 500px; height: 500px; background: #93c5fd; top: -10%; left: -10%; animation-delay: 0s; }
+        .orb-2 { width: 600px; height: 600px; background: #c4b5fd; bottom: -20%; right: -10%; animation-delay: -5s; }
+        .orb-3 { width: 400px; height: 400px; background: #67e8f9; top: 40%; left: 40%; animation-delay: -10s; }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+
+        /* Glassmorphism Classes */
+        .glass-header {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
+        }
+
+        .glass-pill {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Micro-Animations */
+        .hover-lift {
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+        }
+        .hover-lift:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.2), 0 10px 10px -5px rgba(59, 130, 246, 0.1);
+        }
+
+        .animate-fade-in-up {
+            animation: fadeInUp 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .delay-100 { animation-delay: 100ms; }
+        .delay-200 { animation-delay: 200ms; }
+        .delay-300 { animation-delay: 300ms; }
+        
+        .spin-slow {
+            animation: spin 20s linear infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col text-slate-800">
+
+    <!-- Background Elements -->
+    <div class="mesh-bg"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <!-- Header -->
+    <header class="glass-header fixed w-full top-0 z-50 transition-all duration-300">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="flex justify-between items-center h-24">
+                <div class="flex items-center space-x-4 group cursor-pointer">
+                    <div class="relative">
+                        <div class="absolute inset-0 bg-blue-400 rounded-full blur opacity-20 group-hover:opacity-60 transition duration-500"></div>
+                        <img id="school-logo-img" src="" alt="Logo" class="relative h-14 w-14 object-contain bg-white/80 backdrop-blur-sm rounded-full p-1.5 border border-white/50 shadow-sm group-hover:scale-105 transition-transform duration-300 hidden">
+                        <div id="default-logo-icon" class="relative h-14 w-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-105 transition-transform duration-300">
+                            <i class="fa-solid fa-graduation-cap text-2xl"></i>
+                        </div>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="font-extrabold text-xl tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-900 to-indigo-700 hidden sm:block school-name-text">
+                            e-Supervision
+                        </span>
+                        <span class="text-xs font-medium text-slate-500 tracking-wider uppercase hidden sm:block">Smart Education Platform</span>
+                    </div>
+                </div>
+                <div id="header-auth-btn">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Hero Section -->
+    <main class="flex-grow flex items-center justify-center px-4 pt-32 pb-12 sm:pt-40 relative z-10">
+        <div class="max-w-7xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+            
+            <!-- Left Side: Statistics and Charts -->
+            <div class="lg:col-span-6 text-left space-y-6 order-last lg:order-first">
+                <!-- Header Title -->
+                <div class="space-y-3">
+                    <div class="inline-flex items-center px-4 py-1.5 rounded-full glass-pill text-blue-700 text-xs font-bold tracking-wide uppercase">
+                        <span class="flex h-2 w-2 rounded-full bg-blue-500 mr-2 animate-pulse"></span>
+                        สถิติการนิเทศภาพรวม
+                    </div>
+                    <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                        ระบบนิเทศการสอนออนไลน์
+                    </h1>
+                    <p class="text-sm text-slate-500 font-medium leading-relaxed">
+                        ข้อมูลสรุปผลการดำเนินงานและสถิติการนิเทศการจัดการเรียนรู้ของคณะครู <span class="school-name-text"><div class="h-4 w-32 bg-slate-200 rounded animate-pulse inline-block align-middle"></div></span>
+                    </p>
+                </div>
+                
+                <!-- Stats Cards Grid -->
+                <div class="grid grid-cols-3 gap-4 pt-2">
+                    <!-- Card 1: Teachers -->
+                    <div class="glass-pill p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:scale-[1.05] transition-transform duration-300">
+                        <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-2 shadow-inner">
+                            <i class="fas fa-users-cog text-base"></i>
+                        </div>
+                        <span class="text-2xl font-extrabold text-slate-800" id="stat-teachers"><div class="h-8 w-16 bg-slate-200 rounded animate-pulse mx-auto"></div></span>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ครูทั้งหมด</span>
+                    </div>
+                    <!-- Card 2: Supervisions -->
+                    <div class="glass-pill p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:scale-[1.05] transition-transform duration-300">
+                        <div class="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center mb-2 shadow-inner">
+                            <i class="fas fa-clipboard-check text-base"></i>
+                        </div>
+                        <span class="text-2xl font-extrabold text-slate-800" id="stat-records"><div class="h-8 w-16 bg-slate-200 rounded animate-pulse mx-auto"></div></span>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ครั้งที่นิเทศ</span>
+                    </div>
+                    <!-- Card 3: Avg Score -->
+                    <div class="glass-pill p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:scale-[1.05] transition-transform duration-300">
+                        <div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mb-2 shadow-inner">
+                            <i class="fas fa-percentage text-base"></i>
+                        </div>
+                        <span class="text-2xl font-extrabold text-slate-800" id="stat-avg"><div class="h-8 w-16 bg-slate-200 rounded animate-pulse mx-auto"></div></span>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">คะแนนเฉลี่ย</span>
+                    </div>
+                </div>
+
+                <!-- Chart Box -->
+                <div class="glass-card p-5 rounded-2xl relative overflow-hidden">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider">สัดส่วนระดับผลการประเมิน</h3>
+                        <span class="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">Chart.js</span>
+                    </div>
+                    <div class="h-44 flex items-center justify-center">
+                        <canvas id="levelChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row items-center gap-4 pt-2" id="main-actions">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+
+            <!-- Right Side: Graphic/Image in Glass Card -->
+            <div class="lg:col-span-6 relative animate-fade-in-up delay-200 mt-10 lg:mt-0 order-first lg:order-last mb-8 lg:mb-0">
+                
+                <!-- Decorative dashed circle -->
+                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] border border-dashed border-indigo-200 rounded-full spin-slow -z-10"></div>
+                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90%] h-[90%] border border-dashed border-blue-200 rounded-full spin-slow -z-10" style="animation-direction: reverse; animation-duration: 30s;"></div>
+
+                <div class="glass-card rounded-[2.5rem] p-8 lg:p-12 relative transform transition duration-500 hover:scale-[1.02]">
+                    <img id="school-logo-big" src="" alt="School Logo" class="relative z-10 w-full max-w-sm mx-auto object-contain drop-shadow-2xl hidden" style="max-height: 380px;">
+                    <div id="school-logo-big-default" class="relative z-10 w-full max-w-sm mx-auto aspect-square bg-gradient-to-tr from-blue-100 to-indigo-50 rounded-full shadow-inner flex items-center justify-center border-8 border-white/50">
+                        <i class="fa-solid fa-graduation-cap text-9xl text-indigo-300 drop-shadow-md"></i>
+                    </div>
+                    
+                    <!-- Floating Widget 1 -->
+                    <div class="absolute -top-6 -right-6 lg:-right-10 glass-pill px-6 py-4 rounded-2xl flex items-center space-x-4 z-20 animate-float" style="animation-delay: 1s;">
+                        <div class="h-12 w-12 bg-gradient-to-br from-green-400 to-emerald-600 rounded-full flex items-center justify-center text-white shadow-lg">
+                            <i class="fas fa-chart-line text-xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-0.5">Real-time Analytics</p>
+                            <p class="text-sm font-extrabold text-slate-800">สรุปผลแบบเรียลไทม์</p>
+                        </div>
+                    </div>
+
+                    <!-- Floating Widget 2 -->
+                    <div class="absolute -bottom-8 -left-4 lg:-left-12 glass-pill px-6 py-4 rounded-2xl flex items-center space-x-4 z-20 animate-float" style="animation-delay: 2.5s;">
+                        <div class="h-12 w-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg">
+                            <i class="fas fa-file-invoice text-xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-0.5">Auto Report</p>
+                            <p class="text-sm font-extrabold text-slate-800">ออกรายงานอัตโนมัติ</p>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+            
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <div class="max-w-7xl mx-auto px-6 mb-8 relative z-10" id="footer-container">
+        <!-- Loaded dynamically -->
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script>
+        window.showContactModal = function() {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    title: '<i class="fab fa-facebook-messenger text-blue-600 mr-2"></i> ติดต่อขอใช้ระบบ',
+                    html: `
+                        <div class="text-center p-2">
+                            <p class="text-gray-600 mb-6 text-sm font-medium">หากท่านมีความสนใจติดตั้งระบบนิเทศการสอน หรือติดต่อสอบถามเพิ่มเติม<br>ท่านสามารถส่งข้อความทักแชทติดต่อได้โดยตรงทางแฟนเพจครับ</p>
+                            <div class="mb-4">
+                                <a href="https://m.me/Krunoiedu" target="_blank" class="inline-flex items-center gap-2 bg-[#1877F2] hover:bg-[#166FE5] text-white font-extrabold px-6 py-3.5 rounded-xl transition duration-200 shadow-md hover:scale-105 transform">
+                                    <i class="fab fa-facebook-messenger text-xl"></i> ทักแชทข้อความเพจ
+                                </a>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-6 font-semibold"><i class="fas fa-smile text-yellow-500 mr-1"></i> ยินดีให้คำแนะนำและบริการติดตั้งระบบผ่านทางเพจครับ</p>
+                        </div>
+                    `,
+                    showConfirmButton: true,
+                    confirmButtonText: 'ปิดหน้าต่าง',
+                    confirmButtonColor: '#9ca3af',
+                    customClass: { popup: 'rounded-2xl shadow-2xl border border-gray-100' }
+                });
+            }
+        };
+
+        window.showDonationModal = function() {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    title: '<i class="fas fa-heart text-rose-500 mr-2"></i> สนับสนุนค่าพัฒนาระบบ',
+                    html: `
+                        <div class="text-center p-2">
+                            <p class="text-gray-600 mb-4 text-sm font-medium">หากระบบนี้มีประโยชน์และช่วยอำนวยความสะดวกในการทำงานของท่าน<br>ท่านสามารถร่วมสนับสนุนค่าพัฒนาระบบได้ทางเพจครูน้อยสร้างสื่อครับ</p>
+                            <a href="https://www.facebook.com/Krunoiedu" target="_blank" class="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-6 py-3.5 rounded-xl transition duration-200 shadow-md hover:scale-105 transform">
+                                <i class="fab fa-facebook text-xl"></i> ติดต่อสนับสนุนผ่านเพจ
+                            </a>
+                        </div>
+                    `,
+                    showConfirmButton: true,
+                    confirmButtonText: 'ปิดหน้าต่าง',
+                    confirmButtonColor: '#9ca3af',
+                    customClass: { popup: 'rounded-2xl shadow-2xl border border-gray-100' }
+                });
+            }
+        };
+
+        document.addEventListener("DOMContentLoaded", function() {
+            // Clear previous cache once on page load to prevent old corrupted cache issues
+            Object.keys(sessionStorage).forEach(key => { if (key.startsWith('gas_cache_')) sessionStorage.removeItem(key); });
+            Object.keys(localStorage).forEach(key => { if (key.startsWith('gas_cache_')) localStorage.removeItem(key); });
+
+            // 1. ตรวจสอบการล็อกอิน
+            const session = getSession();
+            const headerAuthBtn = document.getElementById('header-auth-btn');
+            const mainActions = document.getElementById('main-actions');
+            
+            if (session) {
+                headerAuthBtn.innerHTML = `
+                    <a href="views/dashboard.html" class="inline-flex items-center bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-full font-semibold hover-lift">
+                        <span>เข้าสู่แดชบอร์ด</span>
+                        <i class="fas fa-arrow-right ml-2 text-sm"></i>
+                    </a>
+                `;
+                mainActions.innerHTML = `
+                    <a href="views/dashboard.html" class="w-full sm:w-auto inline-flex justify-center items-center px-8 py-3.5 text-sm font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover-lift shadow-md shadow-blue-500/10">
+                        เข้าสู่แดชบอร์ด
+                        <i class="fas fa-arrow-right ml-2 text-xs"></i>
+                    </a>
+                `;
+            } else {
+                headerAuthBtn.innerHTML = `
+                    <a href="auth/login.html" class="inline-flex items-center bg-white text-blue-700 border border-blue-100 px-8 py-3 rounded-full font-semibold hover-lift">
+                        <span>เข้าสู่ระบบ</span>
+                        <i class="fas fa-lock ml-2 text-sm text-blue-400"></i>
+                    </a>
+                `;
+                mainActions.innerHTML = `
+                    <a href="auth/login.html" class="w-full sm:w-auto inline-flex justify-center items-center px-8 py-3.5 text-sm font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover-lift shadow-md shadow-blue-500/10">
+                        เข้าสู่ระบบนิเทศ
+                        <i class="fas fa-sign-in-alt ml-2 text-xs"></i>
+                    </a>
+                `;
+            }
+
+            // 2. โหลด Footer ไดนามิก
+            fetch('views/footer.html')
+                .then(res => res.text())
+                .then(html => {
+                    document.getElementById('footer-container').innerHTML = html;
+                    const yrEl = document.getElementById('footer-year');
+                    if (yrEl) yrEl.textContent = new Date().getFullYear();
+
+                    // รันแท็ก <script> ที่อยู่ภายใน footer.html
+                    const temp = document.createElement('div');
+                    temp.innerHTML = html;
+                    temp.querySelectorAll('script').forEach(s => {
+                        const script = document.createElement('script');
+                        script.textContent = s.textContent;
+                        document.body.appendChild(script);
+                    });
+                })
+                .catch(err => console.error("Error loading footer:", err));
+
+            // 3. ดึงสถิติและตั้งค่าทั่วไปจาก Google Sheets API
+            let levelStats = { "ดีมาก": 0, "ดี": 0, "พอใช้": 0, "ปรับปรุง": 0 };
+            
+            if (GAS_API_URL) {
+                // Helper สำหรับแคชข้อมูลที่ดึงมา
+                function fetchWithCache(url, cacheKey) {
+                    const isStats = cacheKey.includes('stats');
+                    const storage = isStats ? localStorage : sessionStorage;
+                    const cached = storage.getItem(cacheKey);
+                    const cacheTime = storage.getItem(cacheKey + '_time');
+                    const TTL = 5 * 60 * 1000;
+                    
+                    if (cached) {
+                        if (isStats) {
+                            fetch(url).then(res => {
+                                if (res.ok) {
+                                    res.clone().text().then(text => {
+                                        try {
+                                            JSON.parse(text); // ป้องกันการแคช HTML Error
+                                            storage.setItem(cacheKey, text);
+                                        } catch(e) {}
+                                    }).catch(()=>{});
+                                }
+                            }).catch(()=>{});
+                            return Promise.resolve(new Response(cached, { status: 200 }));
+                        } else if (cacheTime && (Date.now() - parseInt(cacheTime)) < TTL) {
+                            return Promise.resolve(new Response(cached, { status: 200 }));
+                        }
+                    }
+                    
+                    return fetch(url).then(res => {
+                        if (res.ok) {
+                            return res.text().then(text => {
+                                // แปลงลิงก์รูปภาพของ Google Drive ทั้งหมดให้เป็นแบบ thumbnail เพื่อความเข้ากันได้
+                                const correctedText = text.replace(/https:\/\/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/g, 'https://drive.google.com/thumbnail?id=$1&sz=w1000');
+                                try {
+                                    JSON.parse(correctedText);
+                                    storage.setItem(cacheKey, correctedText);
+                                    storage.setItem(cacheKey + '_time', Date.now());
+                                } catch(e) {}
+                                return new Response(correctedText, {
+                                    status: res.status,
+                                    statusText: res.statusText,
+                                    headers: res.headers
+                                });
+                            });
+                        }
+                        return res;
+                    });
+                }
+
+                // โหลด Settings
+                fetchWithCache(GAS_API_URL + '?action=getSettings', 'gas_cache_settings')
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success && res.data) {
+                            const data = res.data;
+                            if (data.school_name) {
+                                document.querySelectorAll('.school-name-text').forEach(el => {
+                                    el.textContent = data.school_name;
+                                });
+                                document.title = "ระบบบันทึกการนิเทศการสอน - " + data.school_name;
+                            }
+                            if (data.school_logo) {
+                                const logoMini = document.getElementById('school-logo-img');
+                                const defaultMini = document.getElementById('default-logo-icon');
+                                const logoBig = document.getElementById('school-logo-big');
+                                const defaultBig = document.getElementById('school-logo-big-default');
+                                const favicon = document.getElementById('school-logo-favicon');
+                                
+                                if(logoMini) { logoMini.src = data.school_logo; logoMini.classList.remove('hidden'); }
+                                if(defaultMini) defaultMini.classList.add('hidden');
+                                if(logoBig) { logoBig.src = data.school_logo; logoBig.classList.remove('hidden'); }
+                                if(defaultBig) defaultBig.classList.add('hidden');
+                                if(favicon) favicon.href = data.school_logo;
+                            }
+                        }
+                    })
+                    .catch(err => console.error("Settings load failed:", err));
+
+                // โหลดสถิติข้อมูลแดชบอร์ด
+                fetchWithCache(GAS_API_URL + '?action=getDashboardStats', 'gas_cache_stats')
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success && res.data) {
+                            const d = res.data;
+                            document.getElementById('stat-teachers').textContent = d.total_teachers || 0;
+                            document.getElementById('stat-records').textContent = d.total_evaluations || 0;
+                            document.getElementById('stat-avg').textContent = (d.avg_score || 0) + "%";
+                            
+                            if (d.levels) {
+                                levelStats = d.levels;
+                            }
+                        }
+                        renderChart(levelStats);
+                    })
+                    .catch(err => {
+                        console.error("Dashboard stats load failed:", err);
+                        renderChart(levelStats);
+                    });
+            } else {
+                renderChart(levelStats);
+            }
+        });
+
+        // 4. ฟังก์ชันเรนเดอร์กราฟ
+        function renderChart(levelStats) {
+            const ctx = document.getElementById('levelChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(levelStats),
+                    datasets: [{
+                        label: 'จำนวน (ครั้ง)',
+                        data: Object.values(levelStats),
+                        backgroundColor: [
+                            'rgba(34, 197, 94, 0.65)',  // ดีมาก (Green)
+                            'rgba(59, 130, 246, 0.65)',  // ดี (Blue)
+                            'rgba(245, 158, 11, 0.65)',  // พอใช้ (Orange)
+                            'rgba(239, 68, 68, 0.65)'    // ปรับปรุง (Red)
+                        ],
+                        borderColor: [
+                            'rgb(34, 197, 94)',
+                            'rgb(59, 130, 246)',
+                            'rgb(245, 158, 11)',
+                            'rgb(239, 68, 68)'
+                        ],
+                        borderWidth: 1.5,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0,
+                                font: {
+                                    family: 'Sarabun',
+                                    size: 11
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                font: {
+                                    family: 'Sarabun',
+                                    weight: 'bold',
+                                    size: 11
+                                }
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

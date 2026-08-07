@@ -1,0 +1,227 @@
+<div id="view-form" class="view-section view-hidden">
+            <form id="evalForm" onsubmit="submitForm(event)"
+                class="bg-white rounded-xl shadow-lg p-6 lg:p-10 border-t-8 border-school">
+                <div class="text-center mb-8 border-b border-blue-100 pb-6">
+                    <h2 class="text-3xl font-bold text-school mb-2">แบบบันทึกการนิเทศการจัดการเรียนการสอน</h2>
+                    <p class="text-gray-500">กรุณากรอกข้อมูลให้ครบถ้วนเพื่อความสมบูรณ์ของรายงาน</p>
+                </div>
+
+                <!-- ข้อมูลทั่วไป -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+                    <div>
+                        <label class="block text-sm font-medium text-school mb-1">ครั้งที่</label>
+                        <input type="text" id="f_occurrence" required placeholder="เช่น 1"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-school mb-1">ภาคเรียน</label>
+                        <input type="text" id="f_term" required placeholder="เช่น 1"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-school mb-1">ปีการศึกษา</label>
+                        <input type="text" id="f_year" required value="2567"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-school mb-1">วันที่รับการนิเทศ</label>
+                        <input type="date" id="f_date" required
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-school mb-1">เวลา</label>
+                        <input type="text" id="f_time" required placeholder="เช่น 08.00-09.00"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition">
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium text-school mb-1">ชื่อ-นามสกุล ผู้รับการนิเทศ (ครู)</label>
+                        <select id="f_teacher" required onchange="teacherSelected(this.value)"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition bg-white">
+                            <option value="">-- กรุณาเลือกครู --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-school mb-1">ตำแหน่ง (ผู้รับ)</label>
+                        <input type="text" id="f_teacher_pos" required placeholder="เช่น ครู"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition">
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium text-school mb-1">กลุ่มสาระการเรียนรู้</label>
+                        <select id="f_department" required
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition bg-white">
+                            <option value="">-- กรุณาเลือกกลุ่มสาระ --</option>
+                            <option value="ภาษาไทย">ภาษาไทย</option>
+                            <option value="คณิตศาสตร์">คณิตศาสตร์</option>
+                            <option value="วิทยาศาสตร์และเทคโนโลยี">วิทยาศาสตร์และเทคโนโลยี</option>
+                            <option value="สังคมศึกษา ศาสนา และวัฒนธรรม">สังคมศึกษา ศาสนา และวัฒนธรรม</option>
+                            <option value="สุขศึกษาและพลศึกษา">สุขศึกษาและพลศึกษา</option>
+                            <option value="ศิลปะ">ศิลปะ</option>
+                            <option value="การงานอาชีพ">การงานอาชีพ</option>
+                            <option value="ภาษาต่างประเทศ">ภาษาต่างประเทศ</option>
+                            <option value="กิจกรรมพัฒนาผู้เรียน">กิจกรรมพัฒนาผู้เรียน</option>
+                            <option value="ปฐมวัย">ปฐมวัย</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-school mb-1">วิชาที่สอน</label>
+                        <input type="text" id="f_subject" required
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-school mb-1">ชั้น</label>
+                        <input type="text" id="f_class" required
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition">
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium text-school mb-1">ชื่อ-นามสกุล ผู้นิเทศ</label>
+                        <input type="text" id="f_observer" required value=""
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition bg-gray-50" readonly>
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium text-school mb-1">ตำแหน่ง (ผู้นิเทศ)</label>
+                        <input type="text" id="f_observer_pos" required value="" placeholder="เช่น ผู้อำนวยการโรงเรียน"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none transition bg-gray-50" readonly>
+                    </div>
+                </div>
+
+                <!-- ตารางประเมิน (Dynamic) -->
+                <div class="overflow-x-auto mb-6 rounded-lg shadow-sm border border-blue-200">
+                    <table class="table-govt">
+                        <thead>
+                            <tr>
+                                <th rowspan="2" class="w-16">ลำดับ</th>
+                                <th rowspan="2">รายการประเมิน</th>
+                                <th colspan="5">ระดับคะแนน</th>
+                            </tr>
+                            <tr>
+                                <th class="w-12">5</th>
+                                <th class="w-12">4</th>
+                                <th class="w-12">3</th>
+                                <th class="w-12">2</th>
+                                <th class="w-12">1</th>
+                            </tr>
+                        </thead>
+                        <tbody id="eval-table-body">
+                            <!-- เรนเดอร์จาก Config -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- สรุปคะแนน (Realtime) -->
+                <div class="bg-blue-50 p-4 rounded-lg mb-8 flex flex-wrap justify-around items-center border border-blue-200 shadow-inner">
+                    <div class="text-lg text-blue-900">คะแนนรวม: <span id="display-total"
+                            class="font-bold text-2xl text-school">0</span> / <span id="display-max">0</span></div>
+                    <div class="text-lg text-blue-900">ร้อยละ: <span id="display-percent"
+                            class="font-bold text-2xl text-school">0.00</span>%</div>
+                    <div class="text-lg text-blue-900">ระดับคุณภาพ: <span id="display-level"
+                            class="font-bold text-xl px-4 py-1 rounded bg-white shadow-sm border border-blue-200">-</span>
+                    </div>
+                </div>
+
+                <!-- ข้อเสนอแนะ -->
+                <div class="space-y-5 mb-8 bg-gray-50 p-6 rounded-lg border border-gray-200">
+                    <h3 class="text-xl font-bold text-school mb-2 border-b border-blue-200 pb-2"><i
+                            class="fas fa-comment-dots mr-2"></i> สรุปข้อเสนอแนะ</h3>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">จุดเด่น</label>
+                        <textarea id="f_strengths" rows="2"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school outline-none"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">จุดที่ควรพัฒนา</label>
+                        <textarea id="f_improvements" rows="2"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school outline-none"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ข้อเสนอแนะอื่น ๆ</label>
+                        <textarea id="f_suggestions" rows="2"
+                            class="w-full border-blue-200 rounded-md shadow-sm border p-2 focus:ring-school outline-none"></textarea>
+                    </div>
+
+                    <!-- อัปโหลดไฟล์ 4 รูป -->
+                    <div class="mt-6 border-t border-gray-200 pt-4">
+                        <label class="block text-md font-bold text-school mb-3"><i class="fas fa-images mr-1"></i>
+                            อัปโหลดภาพประกอบการนิเทศ (สูงสุด 4 รูป)</label>
+                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                            <!-- ภาพ 1 -->
+                            <div class="bg-white p-3 rounded border border-blue-100 shadow-sm">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">รูปภาพที่ 1</label>
+                                <input type="file" id="f_file1" accept="image/png, image/jpeg"
+                                    onchange="previewImage(this, 'preview1')"
+                                    class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-blue-50 file:text-school hover:file:bg-blue-100 mb-2 cursor-pointer">
+                                <div id="previewContainer1"
+                                    class="hidden flex justify-center bg-gray-50 rounded h-32 overflow-hidden items-center border border-dashed border-gray-300">
+                                    <img id="preview1" src="" alt="พรีวิว 1" class="object-contain h-full w-full">
+                                </div>
+                            </div>
+                            <!-- ภาพ 2 -->
+                            <div class="bg-white p-3 rounded border border-blue-100 shadow-sm">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">รูปภาพที่ 2</label>
+                                <input type="file" id="f_file2" accept="image/png, image/jpeg"
+                                    onchange="previewImage(this, 'preview2')"
+                                    class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-blue-50 file:text-school hover:file:bg-blue-100 mb-2 cursor-pointer">
+                                <div id="previewContainer2"
+                                    class="hidden flex justify-center bg-gray-50 rounded h-32 overflow-hidden items-center border border-dashed border-gray-300">
+                                    <img id="preview2" src="" alt="พรีวิว 2" class="object-contain h-full w-full">
+                                </div>
+                            </div>
+                            <!-- ภาพ 3 -->
+                            <div class="bg-white p-3 rounded border border-blue-100 shadow-sm">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">รูปภาพที่ 3</label>
+                                <input type="file" id="f_file3" accept="image/png, image/jpeg"
+                                    onchange="previewImage(this, 'preview3')"
+                                    class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-blue-50 file:text-school hover:file:bg-blue-100 mb-2 cursor-pointer">
+                                <div id="previewContainer3"
+                                    class="hidden flex justify-center bg-gray-50 rounded h-32 overflow-hidden items-center border border-dashed border-gray-300">
+                                    <img id="preview3" src="" alt="พรีวิว 3" class="object-contain h-full w-full">
+                                </div>
+                            </div>
+                            <!-- ภาพ 4 -->
+                            <div class="bg-white p-3 rounded border border-blue-100 shadow-sm">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">รูปภาพที่ 4</label>
+                                <input type="file" id="f_file4" accept="image/png, image/jpeg"
+                                    onchange="previewImage(this, 'preview4')"
+                                    class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-blue-50 file:text-school hover:file:bg-blue-100 mb-2 cursor-pointer">
+                                <div id="previewContainer4"
+                                    class="hidden flex justify-center bg-gray-50 rounded h-32 overflow-hidden items-center border border-dashed border-gray-300">
+                                    <img id="preview4" src="" alt="พรีวิว 4" class="object-contain h-full w-full">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ลายเซ็น -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    <div class="text-center bg-blue-50 py-4 rounded-lg border border-blue-100">
+                        <label class="block font-bold text-school mb-2"><i class="fas fa-pen-nib"></i> ลายเซ็น
+                            ผู้รับการนิเทศ</label>
+                        <div class="canvas-container relative mx-auto shadow-sm" style="width: 300px; height: 150px;">
+                            <canvas id="padTeacher" width="300" height="150" class="cursor-crosshair"></canvas>
+                        </div>
+                        <button type="button" onclick="signTeacher.clear()"
+                            class="text-xs text-red-500 mt-2 hover:underline"><i class="fas fa-eraser"></i>
+                            ล้างลายเซ็น</button>
+                    </div>
+                    <div class="text-center bg-blue-50 py-4 rounded-lg border border-blue-100">
+                        <label class="block font-bold text-school mb-2"><i class="fas fa-pen-nib"></i> ลายเซ็น
+                            ผู้นิเทศ</label>
+                        <div class="canvas-container relative mx-auto shadow-sm" style="width: 300px; height: 150px;">
+                            <canvas id="padObserver" width="300" height="150" class="cursor-crosshair"></canvas>
+                        </div>
+                        <button type="button" onclick="signObserver.clear()"
+                            class="text-xs text-red-500 mt-2 hover:underline"><i class="fas fa-eraser"></i>
+                            ล้างลายเซ็น</button>
+                    </div>
+                </div>
+
+                <div class="text-center mt-10">
+                    <button type="submit"
+                        class="btn-school px-12 py-4 rounded-full shadow-xl text-xl font-bold hover:shadow-2xl"><i
+                            class="fas fa-paper-plane mr-2"></i> บันทึกข้อมูลและส่งเข้าระบบ</button>
+                </div>
+            </form>
+        </div>

@@ -1,0 +1,108 @@
+<div id="view-assignments" class="view-section view-hidden">
+    <div class="bg-white rounded-xl shadow-lg p-6 border border-blue-100">
+        <div class="flex justify-between items-center mb-6 border-b pb-4 flex-wrap gap-4">
+            <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-tasks text-school mr-2"></i> มอบหมายการนิเทศ</h2>
+            
+            <div class="flex-1 min-w-[200px] max-w-sm ml-auto mr-4">
+                <div class="relative">
+                    <input type="text" id="searchAssignments" onkeyup="filterAssignments()" placeholder="ค้นหาผู้นิเทศ, ผู้รับการนิเทศ..." class="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-school focus:ring-1 focus:ring-school transition-colors">
+                    <div class="absolute left-3 top-2.5 text-gray-400">
+                        <i class="fas fa-search"></i>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="openAssignmentModal()" class="bg-school text-white px-4 py-2 rounded hover:bg-school-dark text-sm"><i class="fas fa-plus mr-1"></i> เพิ่มการมอบหมาย</button>
+        </div>
+
+        <div class="overflow-x-auto rounded-lg border border-blue-100 shadow-sm">
+            <table class="min-w-full divide-y divide-blue-200">
+                <thead class="bg-school text-white">
+                    <tr>
+                        <th class="px-6 py-4 text-center text-xs font-semibold uppercase">ปีการศึกษา/ภาคเรียน</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold uppercase">ผู้นิเทศ (ผู้ประเมิน)</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold uppercase">ผู้รับการนิเทศ (ผู้ถูกประเมิน)</th>
+                        <th class="px-6 py-4 text-center text-xs font-semibold uppercase">สถานะ</th>
+                        <th class="px-6 py-4 text-center text-xs font-semibold uppercase">จัดการ</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-blue-50" id="assignments-table-body">
+                    <tr><td colspan="5" class="text-center py-4 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="assignments-pagination"></div>
+    </div>
+</div>
+
+<!-- Modal มอบหมายงาน -->
+<div id="assignment-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+        <div class="flex justify-between items-center p-4 border-b border-blue-100">
+            <h3 class="text-lg font-bold text-school"><i class="fas fa-user-plus mr-2"></i>มอบหมายงานนิเทศ</h3>
+            <button onclick="closeAssignmentModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        <div class="p-4 space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">ปีการศึกษา/ภาคเรียน</label>
+                <select id="assign_term_id" class="w-full border-gray-300 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none bg-white">
+                    <option value="">-- กำลังโหลด --</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">ผู้นิเทศ (ผู้ประเมิน) <span class="text-xs text-gray-500 font-normal">(เลือกได้หลายคน)</span></label>
+                <div id="assign_observer_list" class="w-full h-32 overflow-y-auto border border-gray-300 rounded-md p-2 bg-white space-y-1">
+                    <div class="text-gray-400 text-sm">-- กำลังโหลด --</div>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">ผู้รับการนิเทศ (ผู้ถูกประเมิน) <span class="text-xs text-gray-500 font-normal">(เลือกได้หลายคน)</span></label>
+                <div id="assign_teacher_list" class="w-full h-40 overflow-y-auto border border-gray-300 rounded-md p-2 bg-white space-y-1">
+                    <div class="text-gray-400 text-sm">-- กำลังโหลด --</div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-2 border-t pt-4 mt-6">
+                <button onclick="closeAssignmentModal()" class="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50 transition">ยกเลิก</button>
+                <button onclick="saveNewAssignment()" class="btn-school px-4 py-2 rounded shadow transition">บันทึกมอบหมาย</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal แก้ไขมอบหมายงาน -->
+<div id="edit-assignment-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+        <div class="flex justify-between items-center p-4 border-b border-blue-100">
+            <h3 class="text-lg font-bold text-school"><i class="fas fa-edit mr-2"></i>แก้ไขการมอบหมายงาน</h3>
+            <button onclick="closeEditAssignmentModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        <div class="p-4 space-y-4">
+            <input type="hidden" id="edit_assign_id">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">ปีการศึกษา/ภาคเรียน</label>
+                <select id="edit_assign_term_id" class="w-full border-gray-300 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none bg-white">
+                    <option value="">-- กำลังโหลด --</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">ผู้นิเทศ (ผู้ประเมิน)</label>
+                <select id="edit_assign_observer_id" class="w-full border-gray-300 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none bg-white">
+                    <option value="">-- กำลังโหลด --</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">ผู้รับการนิเทศ (ผู้ถูกประเมิน)</label>
+                <select id="edit_assign_teacher_id" class="w-full border-gray-300 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none bg-white">
+                    <option value="">-- กำลังโหลด --</option>
+                </select>
+            </div>
+            
+            <div class="flex justify-end space-x-2 border-t pt-4 mt-6">
+                <button onclick="closeEditAssignmentModal()" class="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50 transition">ยกเลิก</button>
+                <button onclick="saveEditAssignment()" class="btn-school px-4 py-2 rounded shadow transition">บันทึกการแก้ไข</button>
+            </div>
+        </div>
+    </div>
+</div>
+

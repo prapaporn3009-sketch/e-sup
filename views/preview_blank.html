@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>แบบบันทึกการนิเทศ (ว่าง)</title>
+    <link rel="icon" type="image/png" id="school-logo-favicon" href="">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/preview_blank.css">
+    
+    <!-- Config and Session helpers -->
+    <script src="../assets/js/config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <style>
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Sarabun', sans-serif;
+            background: #f3f4f6;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #1e40af;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- แสดงสถานะการโหลด -->
+    <div id="loading-view" class="loading-container no-print">
+        <div class="loading-spinner"></div>
+        <div>กำลังดึงรูปแบบแบบประเมิน...</div>
+    </div>
+
+    <!-- เมนูคุมสำหรับการสั่งพิมพ์ (ไม่แสดงเมื่อพิมพ์จริง) -->
+    <div id="print-controls" class="no-print text-center hidden" style="margin-bottom: 10px; margin-top: 10px;">
+        <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #6b7280; color: white; border: none; border-radius: 5px; font-family: 'Sarabun'; margin-right: 10px;">ปิดหน้านี้</button>
+        <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #1e40af; color: white; border: none; border-radius: 5px; font-family: 'Sarabun';">พิมพ์ / บันทึก PDF</button>
+    </div>
+
+    <!-- คอนเทนเนอร์สำหรับเรนเดอร์เอกสารตามหน้าแบบ A4 -->
+    <div id="document-container" class="hidden"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const templateId = urlParams.get('template_id') || 1;
+
+            try {
+                // ดึง session_token
+                let sessionToken = '';
+                const sessionStr = localStorage.getItem('user_session');
+                if (sessionStr) {
+                    try {
+                        const sessionObj = JSON.parse(sessionStr);
+                        if (sessionObj && sessionObj.session_token) {
+                            sessionToken = sessionObj.session_token;
+                        }
+                    } catch (e) {}
+                }
+                const authParams = `&session_token=${encodeURIComponent(sessionToken)}`;
+
+                // 1. โหลดข้อมูลแม่แบบประเมินและตั้งค่าทั่วไปพร้อมกัน (Parallel Fetching)
+                const [templateRes, settingsRes] = await Promise.all([
+                    fetch(`${GAS_API_URL}?action=getTemplate&id=${templateId}${authParams}`).then(r => r.json()),
+                    fetch(`${GAS_API_URL}?action=getSettings${authParams}`).then(r => r.json())
+                ]);
+
+                if (!templateRes.success || !settingsRes.success) {
+                    const errMsg = (!templateRes.success ? (templateRes.message || 'แม่แบบประเมินผิดพลาด') : '') + 
+                                   (!settingsRes.success ? (' ' + (settingsRes.message || 'ตั้งค่าโรงเรียนผิดพลาด')) : '');
+                    alert('ไม่สามารถโหลดข้อมูลได้: ' + errMsg);
+                    window.close();
+                    return;
+                }
+
+                const templateName = templateRes.template.name;
+                let itemsJson = JSON.parse(templateRes.template.items_json);
+                if (typeof itemsJson === 'string') itemsJson = JSON.parse(itemsJson);
+                const items = itemsJson.items || [];
+                const globalSettings = settingsRes.data;
+
+                const schoolName = globalSettings.school_name || 'ชื่อโรงเรียน';
+                const directorName = globalSettings.director_name || 'ผู้อำนวยการโรงเรียน';
+                const schoolLogo = globalSettings.school_logo || '';
+
+                // ตั้งค่า Favicon
+                if (schoolLogo) {
+                    document.getElementById('school-logo-favicon').href = schoolLogo;
+                }
+                document.title = "แบบบันทึกการนิเทศ (ว่าง) - " + templateName;
+
+                // 2. ตั้งค่าเกณฑ์ประเมิน
+                let evaluationCriteria = globalSettings.evaluation_criteria || [];
+                if (evaluationCriteria.length === 0) {
+                    evaluationCriteria = [
+                        { name: "ดีมาก", min: 91, max: 100 },
+                        { name: "ดี", min: 81, max: 90 },
+                        { name: "พอใช้", min: 71, max: 80 },
+                        { name: "ควรปรับปรุง", min: 61, max: 70 },
+                        { name: "ไม่ผ่าน", min: 0, max: 60 }
+                    ];
+                }
+                evaluationCriteria.sort((a, b) => b.min - a.min);
+
+                // 3. จัดการเรนเดอร์เอกสารลงหน้าระดาษ A4
+                const docContainer = document.getElementById('document-container');
+                let pagesHtml = '';
+
+                // แบ่งคำถามหน้าแรก 15 ข้อ และหน้าที่ 2 ส่วนที่เหลือ
+                let firstPageItems = [];
+                let secondPageItems = [];
+                let itemIndex = 0;
+
+                for (let i = 0; i < items.length; i++) {
+                    const it = items[i];
+                    if (it.type !== 'main') {
+                        itemIndex++;
+                    }
+                    if (itemIndex <= 15) {
+                        firstPageItems.push(it);
+                    } else {
+                        secondPageItems.push(it);
+                    }
+                }
+
+                const hasPage2Table = secondPageItems.length > 0;
+
+                // --- สร้างหน้าที่ 1 ---
+                pagesHtml += `
+                <div class="page">
+                    <div class="logo-container">
+                        ${schoolLogo ? `<img src="${schoolLogo}" alt="Logo">` : '<div style="height:60px; width:60px; border-radius:50%; border:2px solid #000; display:inline-block; line-height:60px; font-weight:bold; font-size:12px;">LOGO</div>'}
+                    </div>
+                    
+                    <h2 class="text-center font-bold mb-6" style="font-size: 10pt;">แบบบันทึกการนิเทศภายใน${templateName}<br>${schoolName}</h2>
+                    
+                    <div class="text-center mb-4" style="font-size: 10pt;">
+                        ครั้งที่ <span class="dotted" style="width: 50px;"></span> / <span class="dotted" style="width: 50px;"></span>
+                    </div>
+                    
+                    <table class="info-table">
+                        <tr>
+                            <td width="60%">ผู้รับการนิเทศ <span class="dotted" style="width: 250px;"></span></td>
+                            <td width="40%">ชั้น <span class="dotted" style="width: 150px;"></span></td>
+                        </tr>
+                        <tr>
+                            <td>กลุ่มสาระฯ <span class="dotted" style="width: 240px;"></span></td>
+                            <td>วิชา <span class="dotted" style="width: 150px;"></span></td>
+                        </tr>
+                        <tr>
+                            <td>วันที่ <span class="dotted" style="width: 280px;"></span></td>
+                            <td>เวลา <span class="dotted" style="width: 170px;"></span></td>
+                        </tr>
+                    </table>
+                    
+                    <hr style="border-top: 2px solid #000; margin-bottom: 8px;">
+                    
+                    <p style="font-size: 11pt; font-weight: bold; margin-bottom: 5px;">
+                        คำชี้แจง <span style="font-weight: normal;">กรุณาเขียนเครื่องหมาย ✓ ในช่องระดับคะแนน เพื่อแสดงผลการประเมินพฤติกรรมการสอนของครู</span><br>
+                        เกณฑ์ระดับคะแนน <span style="font-weight: normal;">5 = ยอดเยี่ยม &nbsp; 4 = ดีเลิศ &nbsp; 3 = ดี &nbsp; 2 = ปานกลาง &nbsp; 1 = ควรพัฒนา</span>
+                    </p>
+                    
+                    <table class="main-table">
+                        <thead>
+                            <tr>
+                                <th width="8%" rowspan="2">ที่</th>
+                                <th width="62%" rowspan="2">หัวข้อการประเมิน</th>
+                                <th width="20%" colspan="5">ระดับการประเมิน</th>
+                                <th width="10%" rowspan="2">หมายเหตุ</th>
+                            </tr>
+                            <tr>
+                                <th width="4%">5</th>
+                                <th width="4%">4</th>
+                                <th width="4%">3</th>
+                                <th width="4%">2</th>
+                                <th width="4%">1</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${renderTableRows(firstPageItems, 0)}
+                            ${!hasPage2Table ? `
+                            <tr>
+                                <td colspan="2" class="text-center font-bold">รวม</td>
+                                <td></td><td></td><td></td><td></td><td></td><td></td>
+                            </tr>
+                            <tr>
+                                <td colspan="7" class="text-center font-bold">รวมคะแนน</td>
+                                <td><span class="dotted" style="width: 100%;"></span></td>
+                            </tr>
+                            <tr>
+                                <td colspan="7" class="text-center font-bold">เฉลี่ยร้อยละ/ระดับคุณภาพ</td>
+                                <td><span class="dotted" style="width: 100%;"></span></td>
+                            </tr>
+                            ` : ''}
+                        </tbody>
+                    </table>
+
+                    ${!hasPage2Table ? `
+                    <div style="font-size: 11pt; margin-top: 30px; margin-left: 20px;">
+                        <p class="font-bold mb-4">สรุปผลการนิเทศ ตามเกณฑ์</p>
+                        <div style="margin-left: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px;">
+                            ${evaluationCriteria.map(c => `
+                                <div class="mb-2">
+                                    <span class="checkbox"></span> ร้อยละ ${c.min} - ${c.max} &nbsp;&nbsp; หมายถึง &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${c.name}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                `;
+
+                // --- สร้างหน้าที่ 2 (ถ้ามีข้อคำถามเพิ่มจาก 15 ข้อแรก) ---
+                if (hasPage2Table) {
+                    pagesHtml += `
+                    <div class="page">
+                        <div class="text-center" style="font-size: 10pt; margin-bottom: 5px;">-2-</div>
+                        <table class="main-table">
+                            <thead>
+                                <tr>
+                                    <th width="8%" rowspan="2">ที่</th>
+                                    <th width="58%" rowspan="2">หัวข้อการประเมิน</th>
+                                    <th width="20%" colspan="5">ระดับการประเมิน</th>
+                                    <th width="14%" rowspan="2">หมายเหตุ</th>
+                                </tr>
+                                <tr>
+                                    <th width="4%">5</th>
+                                    <th width="4%">4</th>
+                                    <th width="4%">3</th>
+                                    <th width="4%">2</th>
+                                    <th width="4%">1</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${renderTableRows(secondPageItems, 15)}
+                                <tr>
+                                    <td colspan="2" class="text-center font-bold">รวม</td>
+                                    <td></td><td></td><td></td><td></td><td></td><td></td>
+                                </tr>
+                                <tr>
+                                    <td colspan="7" class="text-center font-bold">รวมคะแนน</td>
+                                    <td><span class="dotted" style="width: 100%;"></span></td>
+                                </tr>
+                                <tr>
+                                    <td colspan="7" class="text-center font-bold">เฉลี่ยร้อยละ/ระดับคุณภาพ</td>
+                                    <td><span class="dotted" style="width: 100%;"></span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <div style="font-size: 11pt; margin-top: 30px; margin-left: 20px;">
+                            <p class="font-bold mb-4">สรุปผลการนิเทศ ตามเกณฑ์</p>
+                            <div style="margin-left: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px;">
+                                ${evaluationCriteria.map(c => `
+                                    <div class="mb-2">
+                                        <span class="checkbox"></span> ร้อยละ ${c.min} - ${c.max} &nbsp;&nbsp; หมายถึง &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${c.name}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }
+
+                // --- สร้างหน้าที่ 3 ---
+                const pageNum = hasPage2Table ? '-3-' : '-2-';
+                let suggestionsBlock = '';
+                for(let i=0; i<8; i++) {
+                    suggestionsBlock += '<div class="line-blank"></div>';
+                }
+
+                pagesHtml += `
+                <div class="page">
+                    <div class="text-center" style="font-size: 10pt; margin-bottom: 5px;">${pageNum}</div>
+                    
+                    <div style="font-size: 11pt;">
+                        <p class="font-bold mb-4">ข้อเสนอแนะ</p>
+                        ${suggestionsBlock}
+                        
+                        <table class="info-table" style="margin-top: 40px;">
+                            <tr>
+                                <td class="text-center" width="50%" style="vertical-align: bottom;">
+                                    ลงชื่อ <span class="dotted" style="width: 200px;"></span> ผู้นิเทศ<br><br>
+                                    ( <span class="dotted" style="width: 240px;"></span> )
+                                </td>
+                                <td class="text-center" width="50%" style="vertical-align: bottom;">
+                                    ลงชื่อ <span class="dotted" style="width: 200px;"></span> ผู้นิเทศ<br><br>
+                                    ( <span class="dotted" style="width: 240px;"></span> )
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        <div style="margin-top: 30px;">
+                            <p class="font-bold mb-4">บันทึกของผู้รับการนิเทศ</p>
+                            <div style="margin-left: 40px; margin-bottom: 30px;">
+                                <span class="checkbox"></span> ได้รับทราบผลการนิเทศแล้ว เมื่อวันที่ <span class="dotted" style="width: 300px;"></span>
+                            </div>
+                            <div class="text-center" style="margin-left: 40%;">
+                                ลงชื่อ <span class="dotted" style="width: 200px;"></span> ผู้รับการนิเทศ<br><br>
+                                ( <span class="dotted" style="width: 240px;"></span> )
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 30px;">
+                            <p class="font-bold mb-4">ความคิดเห็นของผู้บริหาร</p>
+                            <div style="margin-left: 40px; margin-bottom: 5px;">
+                                <span class="checkbox"></span> รับทราบ
+                            </div>
+                            <div class="line-blank"></div>
+                            <div class="line-blank"></div>
+                            <div class="line-blank"></div>
+                            
+                            <div style="margin-top: 40px; display: flex; justify-content: flex-end; padding-right: 10%;">
+                                <table style="border: none; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="border: none; text-align: right; padding: 0 5px 0 0; vertical-align: bottom;">ลงชื่อ</td>
+                                        <td style="border: none; text-align: center; vertical-align: bottom; padding: 0;">
+                                            <div class="dotted" style="width: 200px;"></div>
+                                        </td>
+                                        <td style="border: none; text-align: left; padding: 0 0 0 5px; vertical-align: bottom;">ผู้อำนวยการโรงเรียน</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="border: none;"></td>
+                                        <td style="border: none; text-align: center; padding-top: 10px;">
+                                            ( ${directorName} )
+                                        </td>
+                                        <td style="border: none;"></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+
+                // พ่นหน้าทั้งหมดลง Container
+                docContainer.innerHTML = pagesHtml;
+                document.getElementById('loading-view').classList.add('hidden');
+                document.getElementById('print-controls').classList.remove('hidden');
+                docContainer.classList.remove('hidden');
+
+                // เริ่มปริ้นต์ทันที
+                setTimeout(() => {
+                    window.print();
+                }, 800);
+
+            } catch (err) {
+                alert('เกิดข้อผิดพลาดในการโหลดเทมเพลต: ' + err.message);
+                window.close();
+            }
+        });
+
+        // ฟังก์ชันช่วยเรนเดอร์ตารางย่อย
+        function renderTableRows(itemsList, startIndex) {
+            let html = '';
+            let currentItemIndex = startIndex;
+
+            itemsList.forEach(item => {
+                if (item.type === 'main') {
+                    html += `
+                    <tr>
+                        <td></td>
+                        <td class="font-bold text-left">${item.text}</td>
+                        <td></td><td></td><td></td><td></td><td></td><td></td>
+                    </tr>
+                    `;
+                } else {
+                    currentItemIndex++;
+                    html += `
+                    <tr>
+                        <td class="text-center">${currentItemIndex}</td>
+                        <td class="text-left">${item.text}</td>
+                        <td></td><td></td><td></td><td></td><td></td><td></td>
+                    </tr>
+                    `;
+                }
+            });
+            return html;
+        }
+    </script>
+</body>
+</html>

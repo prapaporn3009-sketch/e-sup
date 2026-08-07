@@ -1,0 +1,105 @@
+<!-- views/analytics.php -->
+<div id="view-analytics" class="view-section view-hidden h-full flex flex-col space-y-6">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl shadow-sm border border-gray-100 gap-4">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-chart-bar text-school mr-2"></i>สรุปสารสนเทศการประเมิน</h2>
+            <p class="text-sm text-gray-500 mt-1">ภาพรวมผลการนิเทศการจัดการเรียนรู้ของโรงเรียนสำหรับผู้บริหาร</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="w-28">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">ปีการศึกษา</label>
+                <select id="analyticsYear" onchange="loadAnalyticsData()" class="w-full border-gray-300 rounded-lg text-sm focus:ring-school focus:border-school">
+                    <option value="all">ทั้งหมด</option>
+                    <option value="2566">2566</option>
+                    <option value="2567">2567</option>
+                    <option value="2568">2568</option>
+                    <option value="2569">2569</option>
+                </select>
+            </div>
+            <div class="w-28">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">ภาคเรียน</label>
+                <select id="analyticsTerm" onchange="loadAnalyticsData()" class="w-full border-gray-300 rounded-lg text-sm focus:ring-school focus:border-school">
+                    <option value="all">ทั้งหมด</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                </select>
+            </div>
+            <button onclick="loadAnalyticsData()" class="mt-5 bg-school text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-800 transition" title="โหลดข้อมูลใหม่">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button onclick="exportExecutiveExcel()" class="mt-5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-sm transition shadow-sm flex items-center font-medium">
+                <i class="fas fa-file-excel mr-1.5 text-base"></i> ส่งออก Excel (.csv)
+            </button>
+        </div>
+    </div>
+
+    <!-- Stat Cards (4 Columns) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Card 1: จำนวนการนิเทศทั้งหมด -->
+        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden group hover:-translate-y-1 transition duration-300">
+            <div class="absolute -right-4 -top-4 opacity-20 transform group-hover:scale-110 transition duration-300">
+                <i class="fas fa-clipboard-check text-8xl"></i>
+            </div>
+            <p class="text-blue-100 text-sm font-medium mb-1">จำนวนการนิเทศทั้งหมด</p>
+            <h3 class="text-4xl font-bold" id="stat-total-records">0</h3>
+            <p class="text-blue-200 text-xs mt-2">ครั้ง</p>
+        </div>
+        
+        <!-- Card 2: จำนวนครูทั้งหมด -->
+        <div class="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden group hover:-translate-y-1 transition duration-300">
+            <div class="absolute -right-4 -top-4 opacity-20 transform group-hover:scale-110 transition duration-300">
+                <i class="fas fa-users text-8xl"></i>
+            </div>
+            <p class="text-emerald-100 text-sm font-medium mb-1">จำนวนครูทั้งหมดในโรงเรียน</p>
+            <h3 class="text-4xl font-bold" id="stat-total-all-teachers">0</h3>
+            <p class="text-emerald-200 text-xs mt-2">คน</p>
+        </div>
+        
+        <!-- Card 3: ร้อยละครูที่ได้รับการนิเทศ -->
+        <div class="bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden group hover:-translate-y-1 transition duration-300">
+            <div class="absolute -right-4 -top-4 opacity-20 transform group-hover:scale-110 transition duration-300">
+                <i class="fas fa-user-check text-8xl"></i>
+            </div>
+            <p class="text-amber-100 text-sm font-medium mb-1">ร้อยละครูที่ได้รับการนิเทศ</p>
+            <h3 class="text-4xl font-bold" id="stat-supervised-rate">0.0%</h3>
+            <p class="text-amber-100 text-xs mt-2">ได้รับการนิเทศ <span id="stat-supervised-count">0</span>/<span id="stat-all-teachers-sub">0</span> คน</p>
+        </div>
+        
+        <!-- Card 4: คะแนนเฉลี่ยภาพรวม -->
+        <div class="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden group hover:-translate-y-1 transition duration-300">
+            <div class="absolute -right-4 -top-4 opacity-20 transform group-hover:scale-110 transition duration-300">
+                <i class="fas fa-chart-line text-8xl"></i>
+            </div>
+            <p class="text-indigo-100 text-sm font-medium mb-1">คะแนนเฉลี่ยภาพรวม</p>
+            <h3 class="text-4xl font-bold" id="stat-avg-score">0.00</h3>
+            <p class="text-indigo-200 text-xs mt-2">เปอร์เซ็นต์ (%)</p>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-[400px]">
+        <!-- Pie Chart -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col relative overflow-hidden">
+            <div id="analytics-skeleton-pie" class="absolute inset-0 bg-white/90 z-10 flex flex-col items-center justify-center hidden">
+                <div class="w-12 h-12 rounded-full border-4 border-slate-200 border-t-school animate-spin mb-3"></div>
+                <p class="text-xs text-slate-500 font-semibold animate-pulse">กำลังดึงข้อมูลสถิติ...</p>
+            </div>
+            <h3 class="text-lg font-bold text-gray-800 mb-4">สัดส่วนคุณภาพผลการประเมิน</h3>
+            <div class="flex-1 relative min-h-[300px]">
+                <canvas id="analyticsLevelChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Bar Chart -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col relative overflow-hidden">
+            <div id="analytics-skeleton-bar" class="absolute inset-0 bg-white/90 z-10 flex flex-col items-center justify-center hidden">
+                <div class="w-12 h-12 rounded-full border-4 border-slate-200 border-t-school animate-spin mb-3"></div>
+                <p class="text-xs text-slate-500 font-semibold animate-pulse">กำลังดึงข้อมูลสถิติ...</p>
+            </div>
+            <h3 class="text-lg font-bold text-gray-800 mb-4">คะแนนเฉลี่ยแยกตามกลุ่มสาระการเรียนรู้</h3>
+            <div class="flex-1 relative min-h-[300px]">
+                <canvas id="analyticsDeptChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>

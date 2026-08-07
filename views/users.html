@@ -1,0 +1,56 @@
+<div id="view-users" class="view-section view-hidden">
+    <div class="bg-white rounded-xl shadow-lg p-6 border border-blue-100">
+        <div class="flex justify-between items-center mb-6 border-b pb-4 flex-wrap gap-4">
+            <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-users text-school mr-2"></i> จัดการผู้ใช้งาน</h2>
+            
+            <div class="flex-1 min-w-[200px] max-w-sm ml-auto mr-4">
+                <div class="relative">
+                    <input type="text" id="searchUsers" onkeyup="filterUsers()" placeholder="ค้นหาชื่อผู้ใช้, อีเมล, ชื่อ-นามสกุล..." class="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-school focus:ring-1 focus:ring-school transition-colors">
+                    <div class="absolute left-3 top-2.5 text-gray-400">
+                        <i class="fas fa-search"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex space-x-2 flex-wrap items-center gap-2">
+                <!-- แถบกำหนดเทมเพลตกลุ่ม (Bulk assignment panel) -->
+                <div id="bulkActionPanel" class="hidden bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg flex items-center space-x-2 text-sm shadow-sm transition-all duration-200">
+                    <span class="text-blue-800 font-bold">เลือกแล้ว <span id="selectedCount" class="text-red-500 font-extrabold">0</span> คน:</span>
+                    <select id="bulkTemplateSelect" class="border border-blue-200 rounded p-1 text-xs outline-none bg-white font-medium text-gray-700">
+                        <option value="">-- ลบเทมเพลต/ค่าเริ่มต้น --</option>
+                    </select>
+                    <button onclick="applyBulkTemplate()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs transition flex items-center font-medium"><i class="fas fa-check-circle mr-1"></i> กำหนด</button>
+                </div>
+
+                <a href="../assets/sample_users.csv" download class="bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 px-4 py-2 rounded shadow-sm transition flex items-center text-sm font-medium"><i class="fas fa-download mr-2"></i> โหลดไฟล์ตัวอย่าง CSV</a>
+                <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleCsvUpload(event)">
+                <button onclick="document.getElementById('csvFileInput').click()" class="bg-green-500 text-white hover:bg-green-600 px-4 py-2 rounded shadow-sm transition"><i class="fas fa-file-csv mr-1"></i> นำเข้า CSV</button>
+                <button onclick="showUserModal()" class="btn-school px-4 py-2 rounded shadow-sm transition"><i class="fas fa-plus mr-1"></i> เพิ่มผู้ใช้งาน</button>
+            </div>
+        </div>
+        
+        <div class="overflow-x-auto rounded-lg border border-blue-100 shadow-sm">
+            <table class="min-w-full divide-y divide-blue-200">
+                <thead class="bg-school text-white">
+                            <tr>
+                                <th class="px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider w-10">
+                                    <input type="checkbox" id="selectAllUsers" onchange="toggleSelectAllUsers(this)" class="rounded text-school focus:ring-school cursor-pointer">
+                                </th>
+                                <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Username</th>
+                                <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">ชื่อ-นามสกุล</th>
+                                <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Email</th>
+                                <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider">บทบาท (Role)</th>
+                                <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider">รูปแบบประเมิน</th>
+                                <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-blue-50" id="users-table-body">
+                            <tr>
+                                <td colspan="8" class="text-center py-8 text-blue-500"><i class="fas fa-spinner fa-spin fa-2x"></i><br>กำลังโหลดข้อมูล...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="users-pagination"></div>
+            </div>
+        </div>

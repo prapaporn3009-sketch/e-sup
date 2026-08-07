@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>รายงานสรุปสารสนเทศผลการนิเทศการจัดการเรียนรู้ ภาพรวมโรงเรียน</title>
+    <link rel="icon" type="image/png" id="school-logo-favicon" href="">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/preview_report.css">
+    
+    <script src="../assets/js/config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #f1f5f9;
+            margin: 0;
+            padding: 20px;
+            color: #0f172a;
+        }
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 15mm 15mm;
+            margin: 0 auto 20px auto;
+            background: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            position: relative;
+            box-sizing: border-box;
+            font-size: 11pt;
+            line-height: 1.4;
+        }
+        .header-title {
+            text-align: center;
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 4px;
+            color: #0f172a;
+        }
+        .header-sub {
+            text-align: center;
+            font-size: 12pt;
+            font-weight: bold;
+            color: #1e3a8a;
+            margin-bottom: 15px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            background-color: #f8fafc;
+        }
+        .stat-value {
+            font-size: 18pt;
+            font-weight: bold;
+            color: #1e40af;
+        }
+        .stat-label {
+            font-size: 10pt;
+            color: #475569;
+        }
+        table.exec-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        table.exec-table th, table.exec-table td {
+            border: 1px solid #334155;
+            padding: 6px 8px;
+            font-size: 10.5pt;
+        }
+        table.exec-table th {
+            background-color: #f1f5f9;
+            text-align: center;
+            font-weight: bold;
+        }
+        .sign-section {
+            margin-top: 40px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            page-break-inside: avoid;
+        }
+        .sign-box {
+            text-align: center;
+        }
+        .sign-line {
+            border-bottom: 1px dotted #000;
+            width: 200px;
+            display: inline-block;
+            margin-top: 45px;
+            margin-bottom: 5px;
+        }
+        @media print {
+            body { background: white; padding: 0; }
+            .page { box-shadow: none; margin: 0; padding: 12mm 12mm; width: 100%; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Controls Bar -->
+    <div class="max-w-[210mm] mx-auto mb-4 flex justify-between items-center no-print">
+        <button onclick="window.close()" class="bg-slate-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-slate-700 transition flex items-center">
+            <i class="fas fa-arrow-left mr-2"></i> ปิดหน้านี้
+        </button>
+        <button onclick="window.print()" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-blue-700 transition flex items-center">
+            <i class="fas fa-print mr-2"></i> พิมพ์เอกสาร / บันทึกเป็น PDF
+        </button>
+    </div>
+
+    <!-- Document Page -->
+    <div class="page shadow-lg rounded-sm" id="report-page">
+        <div class="logo-container text-center mb-2">
+            <img id="exec-logo" src="" alt="Logo" class="h-16 mx-auto hidden">
+        </div>
+        
+        <div class="header-title">รายงานสรุปสารสนเทศผลการนิเทศการจัดการเรียนรู้ ภาพรวมโรงเรียน</div>
+        <div class="header-sub" id="exec-school-name">โรงเรียน...</div>
+        
+        <div class="text-center font-bold text-slate-700 mb-4" id="exec-filter-info">
+            ประจำปีการศึกษา - ภาคเรียนที่ -
+        </div>
+
+        <!-- Section 1: Stats Overview -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">จำนวนครูผู้สอนที่รับการนิเทศ</div>
+                <div class="stat-value" id="stat-teachers-val">0 คน</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">จำนวนครั้งการนิเทศทั้งหมด</div>
+                <div class="stat-value" id="stat-records-val">0 ครั้ง</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">คะแนนเฉลี่ยร้อยละภาพรวม</div>
+                <div class="stat-value" id="stat-avg-val">0.00%</div>
+            </div>
+        </div>
+
+        <!-- Section 2: Summary by Department -->
+        <div class="font-bold text-slate-800 mb-2">1. สรุปผลการประเมินแยกตามกลุ่มสาระการเรียนรู้</div>
+        <table class="exec-table mb-4">
+            <thead>
+                <tr>
+                    <th width="8%">ลำดับ</th>
+                    <th width="42%">กลุ่มสาระการเรียนรู้</th>
+                    <th width="15%">จำนวนครู (คน)</th>
+                    <th width="15%">จำนวนครั้ง</th>
+                    <th width="20%">คะแนนเฉลี่ย (%)</th>
+                </tr>
+            </thead>
+            <tbody id="dept-table-body">
+                <tr><td colspan="5" class="text-center text-gray-500">กำลังโหลด...</td></tr>
+            </tbody>
+        </table>
+
+        <!-- Section 3: Summary by Quality Level -->
+        <div class="font-bold text-slate-800 mb-2">2. สัดส่วนระดับคุณภาพผลการประเมิน</div>
+        <table class="exec-table mb-4">
+            <thead>
+                <tr>
+                    <th width="40%">ระดับผลการประเมิน</th>
+                    <th width="30%">จำนวน (ครั้ง)</th>
+                    <th width="30%">คิดเป็นร้อยละ (%)</th>
+                </tr>
+            </thead>
+            <tbody id="level-table-body">
+                <tr><td colspan="3" class="text-center text-gray-500">กำลังโหลด...</td></tr>
+            </tbody>
+        </table>
+
+        <!-- Section 4: Detailed Supervision List -->
+        <div class="font-bold text-slate-800 mb-2">3. รายละเอียดผลการนิเทศรายบุคคล</div>
+        <table class="exec-table mb-6">
+            <thead>
+                <tr>
+                    <th width="6%">ที่</th>
+                    <th width="16%">วันที่นิเทศ</th>
+                    <th width="24%">ครูผู้รับการนิเทศ</th>
+                    <th width="20%">กลุ่มสาระฯ</th>
+                    <th width="14%">ผู้นิเทศ</th>
+                    <th width="10%">ร้อยละ</th>
+                    <th width="10%">ระดับ</th>
+                </tr>
+            </thead>
+            <tbody id="records-table-body">
+                <tr><td colspan="7" class="text-center text-gray-500">กำลังโหลด...</td></tr>
+            </tbody>
+        </table>
+
+        <!-- Signatures -->
+        <div class="sign-section">
+            <div class="sign-box">
+                <p>ลงชื่อ..........................................................</p>
+                <div class="sign-line"></div>
+                <p>(..........................................................)</p>
+                <p>ตำแหน่ง หัวหน้างานนิเทศการสอน</p>
+            </div>
+            <div class="sign-box">
+                <p>ลงชื่อ..........................................................</p>
+                <div class="sign-line"></div>
+                <p>(..........................................................)</p>
+                <p>ตำแหน่ง ผู้อำนวยการโรงเรียน</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const year = urlParams.get('year') || 'all';
+            const term = urlParams.get('term') || 'all';
+
+            document.getElementById('exec-filter-info').textContent = 
+                `ประจำปีการศึกษา ${year === 'all' ? 'ทั้งหมด' : year}  ภาคเรียนที่ ${term === 'all' ? 'ทั้งหมด' : term}`;
+
+            // Load Settings (School Name & Logo)
+            if (GAS_API_URL) {
+                fetch(GAS_API_URL + '?action=getSettings')
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success && res.data) {
+                            if (res.data.school_name) {
+                                document.getElementById('exec-school-name').textContent = res.data.school_name;
+                                document.title = "รายงานสรุปผู้บริหาร - " + res.data.school_name;
+                            }
+                            if (res.data.school_logo) {
+                                const logoImg = document.getElementById('exec-logo');
+                                logoImg.src = res.data.school_logo;
+                                logoImg.classList.remove('hidden');
+                            }
+                        }
+                    }).catch(e => console.error(e));
+            }
+
+            // Load Report Analytics Data
+            const fetchYear = year === 'all' ? '' : year;
+            const fetchTerm = term === 'all' ? '' : term;
+
+            let reportApiUrl = `../api/api.php?action=getReportData&year=${fetchYear}&term=${fetchTerm}`;
+            if (typeof GAS_API_URL !== 'undefined' && GAS_API_URL) {
+                reportApiUrl = `${GAS_API_URL}?action=getReportData&year=${fetchYear}&term=${fetchTerm}`;
+            }
+
+            fetch(reportApiUrl)
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success && res.data) {
+                        const records = res.data;
+
+                        // Stats
+                        const totalRecords = records.length;
+                        const uniqueTeachers = new Set(records.map(r => r.teacher)).size;
+                        const avgScore = totalRecords > 0 
+                            ? (records.reduce((acc, r) => acc + (parseFloat(r.percent) || 0), 0) / totalRecords).toFixed(2)
+                            : "0.00";
+
+                        document.getElementById('stat-teachers-val').textContent = uniqueTeachers + ' คน';
+                        document.getElementById('stat-records-val').textContent = totalRecords + ' ครั้ง';
+                        document.getElementById('stat-avg-val').textContent = avgScore + '%';
+
+                        // Department Summary
+                        const deptMap = {};
+                        records.forEach(r => {
+                            const dept = r.department || 'ไม่ระบุกลุ่มสาระ';
+                            if (!deptMap[dept]) {
+                                deptMap[dept] = { teachers: new Set(), count: 0, totalPercent: 0 };
+                            }
+                            deptMap[dept].teachers.add(r.teacher);
+                            deptMap[dept].count += 1;
+                            deptMap[dept].totalPercent += (parseFloat(r.percent) || 0);
+                        });
+
+                        let deptHtml = '';
+                        let index = 1;
+                        Object.keys(deptMap).forEach(dept => {
+                            const d = deptMap[dept];
+                            const deptAvg = (d.totalPercent / d.count).toFixed(2);
+                            deptHtml += `
+                                <tr>
+                                    <td class="text-center">${index++}</td>
+                                    <td>${dept}</td>
+                                    <td class="text-center">${d.teachers.size}</td>
+                                    <td class="text-center">${d.count}</td>
+                                    <td class="text-center font-bold">${deptAvg}%</td>
+                                </tr>
+                            `;
+                        });
+                        document.getElementById('dept-table-body').innerHTML = deptHtml || '<tr><td colspan="5" class="text-center">ไม่พบข้อมูล</td></tr>';
+
+                        // Level Summary
+                        const levelMap = { 'ดีมาก': 0, 'ดี': 0, 'พอใช้': 0, 'ควรปรับปรุง': 0, 'ไม่ผ่าน': 0 };
+                        records.forEach(r => {
+                            const lvl = r.level || 'ดีมาก';
+                            levelMap[lvl] = (levelMap[lvl] || 0) + 1;
+                        });
+
+                        let levelHtml = '';
+                        Object.keys(levelMap).forEach(lvl => {
+                            const count = levelMap[lvl];
+                            const pct = totalRecords > 0 ? ((count / totalRecords) * 100).toFixed(2) : '0.00';
+                            levelHtml += `
+                                <tr>
+                                    <td>${lvl}</td>
+                                    <td class="text-center">${count}</td>
+                                    <td class="text-center">${pct}%</td>
+                                </tr>
+                            `;
+                        });
+                        document.getElementById('level-table-body').innerHTML = levelHtml;
+
+                        // Records Detail Table
+                        let recHtml = '';
+                        records.forEach((r, idx) => {
+                            recHtml += `
+                                <tr>
+                                    <td class="text-center">${idx + 1}</td>
+                                    <td class="text-center">${formatDateThai(r.date)}</td>
+                                    <td>${r.teacher || '-'}</td>
+                                    <td>${r.department || '-'}</td>
+                                    <td>${r.observer || '-'}</td>
+                                    <td class="text-center font-bold">${r.percent || 0}%</td>
+                                    <td class="text-center">${r.level || '-'}</td>
+                                </tr>
+                            `;
+                        });
+                        document.getElementById('records-table-body').innerHTML = recHtml || '<tr><td colspan="7" class="text-center">ไม่พบข้อมูล</td></tr>';
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                });
+        });
+
+        function formatDateThai(dateStr) {
+            if (!dateStr || dateStr === '-') return '-';
+            if (typeof dateStr === 'string' && (dateStr.includes('ม.ค.') || dateStr.includes('มกราคม') || dateStr.includes('พ.ศ.'))) {
+                return dateStr;
+            }
+            let date;
+            if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
+                const [y, m, d] = dateStr.trim().split('-').map(Number);
+                date = new Date(y, m - 1, d);
+            } else {
+                date = new Date(dateStr);
+            }
+            if (isNaN(date.getTime())) return dateStr;
+
+            const thaiMonthsFull = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            return `${date.getDate()} ${thaiMonthsFull[date.getMonth()]} ${date.getFullYear() + 543}`;
+        }
+    </script>
+</body>
+</html>

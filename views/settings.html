@@ -1,0 +1,182 @@
+<div id="view-settings" class="view-section view-hidden">
+    <div class="bg-white rounded-xl shadow-lg p-6 border border-blue-100">
+        <div class="flex justify-between items-center mb-6 border-b pb-4">
+            <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-cog text-school mr-2"></i> ตั้งค่าระบบ</h2>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex space-x-4 border-b border-gray-200 mb-6">
+            <button onclick="switchSettingsTab('general')" id="tab-btn-general" class="pb-2 px-1 font-semibold text-school border-b-2 border-school focus:outline-none">ข้อมูลทั่วไป</button>
+            <button onclick="switchSettingsTab('evaluation')" id="tab-btn-evaluation" class="pb-2 px-1 font-semibold text-gray-500 hover:text-school focus:outline-none">หัวข้อประเมิน</button>
+            <button onclick="switchSettingsTab('terms')" id="tab-btn-terms" class="pb-2 px-1 font-semibold text-gray-500 hover:text-school focus:outline-none">ภาคเรียน</button>
+        </div>
+
+        <!-- Tab Content: General Settings -->
+        <div id="tab-content-general" class="space-y-6">
+            <form id="generalSettingsForm" onsubmit="event.preventDefault(); saveGeneralSettings();">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อโรงเรียน</label>
+                        <input type="text" id="setting_school_name" name="school_name" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-school focus:border-school border p-2" value="">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">โลโก้โรงเรียน (รูปภาพ)</label>
+                        <input type="file" id="setting_school_logo" name="school_logo" accept="image/png, image/jpeg" class="w-full border-gray-300 rounded-md shadow-sm border p-1.5">
+                        <p class="text-xs text-gray-500 mt-1">ปล่อยว่างไว้หากไม่ต้องการเปลี่ยน</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อผู้อำนวยการ</label>
+                        <input type="text" id="setting_director_name" name="director_name" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-school focus:border-school border p-2" value="">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อรองผู้อำนวยการ</label>
+                        <input type="text" id="setting_deputy_director_name" name="deputy_director_name" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-school focus:border-school border p-2" value="">
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <button type="submit" class="btn-school px-4 py-2 rounded shadow"><i class="fas fa-save mr-1"></i> บันทึกข้อมูลทั่วไป</button>
+                </div>
+            </form>
+        </div>
+
+        
+        <!-- Tab Content: Evaluation Settings -->
+        <div id="tab-content-evaluation" class="hidden">
+            <div id="template-list-view">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-gray-700">รูปแบบแบบประเมินทั้งหมด</h3>
+                    <div>
+                        <button onclick="editGlobalTemplate()" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 text-sm mr-2 shadow-sm"><i class="fas fa-star mr-1"></i> แก้ไขรูปแบบเริ่มต้น</button>
+                        <button onclick="createNewTemplate()" class="bg-school text-white px-4 py-2 rounded hover:bg-school-dark text-sm shadow-sm"><i class="fas fa-plus mr-1"></i> สร้างรูปแบบใหม่</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-blue-100 shadow-sm mb-6">
+                    <table class="min-w-full divide-y divide-blue-200">
+                        <thead class="bg-school text-white">
+                            <tr>
+                                <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">ชื่อรูปแบบประเมิน</th>
+                                <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-blue-50" id="templates-table-body">
+                            <tr><td colspan="2" class="text-center py-4 text-gray-500">กำลังโหลด...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Template Editor -->
+            <div id="template-editor-view" class="hidden">
+                <div class="flex items-center mb-4 border-b pb-3">
+                    <button onclick="closeTemplateEditor()" class="text-gray-500 hover:text-school mr-4"><i class="fas fa-arrow-left text-xl"></i></button>
+                    <h3 class="text-lg font-bold text-school" id="editor-title">แก้ไขรูปแบบแบบประเมิน</h3>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อรูปแบบ (เช่น ครูปฐมวัย, ครูประถม)</label>
+                    <input type="text" id="template_name_input" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-school focus:border-school border p-2">
+                    <input type="hidden" id="template_id_input">
+                </div>
+
+                <div class="flex justify-between items-center mb-4 mt-6">
+                    <div class="bg-blue-50 p-4 rounded text-sm text-blue-800 border border-blue-200 flex-1 mr-4">
+                        <i class="fas fa-info-circle mr-1"></i> <b>คำแนะนำ:</b> เพิ่ม "หัวข้อหลัก" เพื่อเป็นหมวดหมู่ (ไม่มีคะแนน) และเพิ่ม "หัวข้อย่อย" เพื่อให้คะแนน 1-5
+                    </div>
+                    <button onclick="saveTemplateConfig()" class="btn-school px-4 py-2 rounded shadow shrink-0"><i class="fas fa-save mr-1"></i> บันทึกโครงสร้าง</button>
+                </div>
+
+                <div class="mb-6 flex space-x-2">
+                    <button onclick="addConfigItem('main')" class="bg-school text-white px-3 py-2 rounded hover:bg-school-dark text-sm"><i class="fas fa-plus mr-1"></i> เพิ่มหัวข้อหลัก</button>
+                    <button onclick="addConfigItem('sub')" class="bg-blue-400 text-white px-3 py-2 rounded hover:bg-blue-600 text-sm"><i class="fas fa-plus mr-1"></i> เพิ่มหัวข้อย่อย</button>
+                </div>
+
+                <div id="config-container" class="space-y-3">
+                    <!-- Config Items จะถูก render ที่นี่ -->
+                </div>
+            </div>
+
+            <div id="criteria-editor-view" class="mt-8 border-t border-blue-100 pt-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-school">เกณฑ์การแปลผล (ระบบคำนวณร้อยละอัตโนมัติ)</h3>
+                    <div class="flex space-x-2">
+                        <button onclick="addCriteriaItem()" class="bg-blue-500 text-white px-3 py-1.5 rounded hover:bg-blue-600 text-sm"><i class="fas fa-plus mr-1"></i> เพิ่มเกณฑ์ใหม่</button>
+                        <button onclick="saveCriteriaConfig()" class="bg-school text-white px-3 py-1.5 rounded hover:bg-school-dark text-sm"><i class="fas fa-save mr-1"></i> บันทึกเกณฑ์</button>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto rounded-lg border border-blue-100 shadow-sm">
+                    <table class="min-w-full divide-y divide-blue-200">
+                        <thead class="bg-school text-white">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-semibold">ชื่อเกณฑ์</th>
+                                <th class="px-4 py-2 text-center text-xs font-semibold w-24">ต่ำสุด (%)</th>
+                                <th class="px-4 py-2 text-center text-xs font-semibold w-24">สูงสุด (%)</th>
+                                <th class="px-4 py-2 text-left text-xs font-semibold w-32">สีประจำเกณฑ์</th>
+                                <th class="px-4 py-2 text-center text-xs font-semibold w-20">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-blue-50" id="criteria-table-body">
+                            <!-- จะถูกเรนเดอร์ด้วย JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Terms -->
+        <div id="tab-content-terms" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-gray-700">จัดการภาคเรียน / ปีการศึกษา</h3>
+                <button onclick="openTermModal()" class="bg-school text-white px-4 py-2 rounded hover:bg-school-dark text-sm"><i class="fas fa-plus mr-1"></i> เพิ่มภาคเรียน</button>
+            </div>
+            <div class="overflow-x-auto rounded-lg border border-blue-100 shadow-sm mb-6">
+                <table class="min-w-full divide-y divide-blue-200">
+                    <thead class="bg-school text-white">
+                        <tr>
+                            <th class="px-6 py-4 text-center text-xs font-semibold uppercase">ปีการศึกษา</th>
+                            <th class="px-6 py-4 text-center text-xs font-semibold uppercase">ภาคเรียน</th>
+                            <th class="px-6 py-4 text-center text-xs font-semibold uppercase">สถานะ (ใช้งานปัจจุบัน)</th>
+                            <th class="px-6 py-4 text-center text-xs font-semibold uppercase">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-blue-50 text-center" id="terms-table-body">
+                        <tr><td colspan="4" class="py-4 text-gray-500">กำลังโหลด...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Modal เพิ่มภาคเรียน -->
+<div id="term-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div class="flex justify-between items-center p-4 border-b border-blue-100">
+            <h3 class="text-lg font-bold text-school"><i class="fas fa-calendar-plus mr-2"></i>เพิ่มภาคเรียนใหม่</h3>
+            <button onclick="closeTermModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        <div class="p-4">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">ปีการศึกษา (เช่น 2567)</label>
+                <input type="text" id="term_year_input" class="w-full border-gray-300 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none">
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">ภาคเรียน</label>
+                <select id="term_input" class="w-full border-gray-300 rounded-md shadow-sm border p-2 focus:ring-school focus:border-school outline-none bg-white">
+                    <option value="1">ภาคเรียนที่ 1</option>
+                    <option value="2">ภาคเรียนที่ 2</option>
+                </select>
+            </div>
+            <div class="mb-6 flex items-center">
+                <input type="checkbox" id="term_is_active_input" class="rounded border-gray-300 text-school shadow-sm focus:ring-school mr-2 w-4 h-4">
+                <label class="text-sm text-gray-700" for="term_is_active_input">ตั้งให้เป็นภาคเรียนปัจจุบันทันที</label>
+            </div>
+            <div class="flex justify-end space-x-2 border-t pt-4">
+                <button onclick="closeTermModal()" class="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50 transition">ยกเลิก</button>
+                <button onclick="saveNewTerm()" class="btn-school px-4 py-2 rounded shadow transition">บันทึกข้อมูล</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- ==================== 3. บันทึกการนิเทศ (Form) ==================== -->

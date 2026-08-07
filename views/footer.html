@@ -1,0 +1,77 @@
+<footer class="mt-8 mb-4 px-6 py-4 bg-white/60 backdrop-blur-md rounded-2xl border border-blue-50 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 max-w-7xl mx-auto w-full transition-all">
+    <div class="flex items-center gap-2">
+        <i class="fa-solid fa-code text-school"></i>
+        <span>พัฒนาโดย <a href="https://www.facebook.com/Krunoiedu" target="_blank" class="text-school hover:underline font-semibold">เพจครูน้อยสร้างสื่อ</a> &copy; <span id="footer-year"></span> All Rights Reserved.</span>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        <button onclick="window.showContactModal ? window.showContactModal() : showContactModal()" class="inline-flex items-center gap-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 hover:text-blue-700 font-bold px-4 py-2 rounded-xl transition duration-200 shadow-sm transform hover:scale-105">
+            <i class="fas fa-phone-alt text-blue-500"></i> ติดต่อขอใช้ระบบ
+        </button>
+        <button onclick="window.showDonationModal ? window.showDonationModal() : showDonationModal()" class="inline-flex items-center gap-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 hover:text-rose-700 font-bold px-4 py-2 rounded-xl transition duration-200 shadow-sm transform hover:scale-105">
+            <i class="fas fa-heart text-rose-500 animate-pulse"></i> สนับสนุนค่าพัฒนาระบบ
+        </button>
+    </div>
+</footer>
+
+<script>
+    function showContactModal() {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: '<i class="fab fa-facebook-messenger text-blue-600 mr-2"></i> ติดต่อขอใช้ระบบ',
+                html: `
+                    <div class="text-center p-2">
+                        <p class="text-gray-600 mb-6 text-sm font-medium">หากท่านมีความสนใจติดตั้งระบบนิเทศการสอน หรือติดต่อสอบถามเพิ่มเติม<br>ท่านสามารถส่งข้อความทักแชทติดต่อได้โดยตรงทางแฟนเพจครับ</p>
+                        
+                        <div class="mb-4">
+                            <a href="https://m.me/Krunoiedu" target="_blank" class="inline-flex items-center gap-2 bg-[#1877F2] hover:bg-[#166FE5] text-white font-extrabold px-6 py-3.5 rounded-xl transition duration-200 shadow-md hover:scale-105 transform">
+                                <i class="fab fa-facebook-messenger text-xl"></i> ทักแชทข้อความเพจ
+                            </a>
+                        </div>
+                        
+                        <p class="text-xs text-gray-400 mt-6 font-semibold"><i class="fas fa-smile text-yellow-500 mr-1"></i> ยินดีให้คำแนะนำและบริการติดตั้งระบบผ่านทางเพจครับ</p>
+                    </div>
+                `,
+                showConfirmButton: true,
+                confirmButtonText: 'ปิดหน้าต่าง',
+                confirmButtonColor: '#9ca3af',
+                customClass: {
+                    popup: 'rounded-2xl shadow-2xl border border-gray-100'
+                }
+            });
+        }
+    }
+
+    function showDonationModal() {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: '<i class="fas fa-heart text-rose-500 mr-2"></i> สนับสนุนค่าพัฒนาระบบ',
+                html: `
+                    <div class="text-center p-2">
+                        <p class="text-gray-600 mb-4 text-sm font-medium">หากระบบนี้ช่วยให้งานของท่านสะดวกและรวดเร็วขึ้น<br>ท่านสามารถสนับสนุนค่าน้ำชา/กาแฟให้กับผู้พัฒนาได้ผ่านช่องทางนี้ครับ</p>
+                        
+                        <div class="mb-4 inline-block bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
+                            <img src="https://promptpay.io/0821446629.png" alt="PromptPay QR Code" class="w-48 h-48 mx-auto object-contain">
+                        </div>
+                        
+                        <div class="mb-2">
+                            <a href="https://m.me/Krunoiedu" target="_blank" class="inline-flex items-center gap-2 bg-[#1877F2] hover:bg-[#166FE5] text-white font-extrabold px-5 py-2.5 rounded-xl transition duration-200 shadow-md hover:scale-105 transform">
+                                <i class="fab fa-facebook-messenger text-lg"></i> ส่งหลักฐานการโอนทางแชทเพจ
+                            </a>
+                        </div>
+                        
+                        <p class="text-xs text-gray-400 mt-6 font-semibold"><i class="fas fa-heart text-red-500 mr-1 animate-pulse"></i> ขอบคุณทุกการสนับสนุนและการใช้งานครับ</p>
+                    </div>
+                `,
+                showConfirmButton: true,
+                confirmButtonText: 'ปิดหน้าต่าง',
+                confirmButtonColor: '#3b82f6',
+                customClass: {
+                    popup: 'rounded-2xl shadow-2xl border border-gray-100'
+                }
+            });
+        }
+    }
+
+    window.showContactModal = showContactModal;
+    window.showDonationModal = showDonationModal;
+</script>

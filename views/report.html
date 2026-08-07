@@ -1,0 +1,54 @@
+<div id="view-report" class="view-section view-hidden">
+            <div class="bg-white rounded-xl shadow-lg p-6 border border-blue-100">
+                <div class="flex justify-between items-center mb-6 border-b pb-4">
+                    <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-list-alt text-school mr-2"></i>
+                        ทะเบียนข้อมูลการนิเทศ</h2>
+                    <button onclick="loadReportData()"
+                        class="text-blue-500 hover:text-blue-800 transition bg-blue-50 px-3 py-1 rounded shadow-sm"><i
+                            class="fas fa-sync-alt"></i> โหลดข้อมูลใหม่</button>
+                </div>
+
+                <div class="mb-4 flex flex-wrap justify-end gap-2">
+                    <select id="filterYear" onchange="loadReportData()" class="border border-blue-200 rounded-full px-4 py-2 focus:ring-school outline-none transition shadow-sm text-sm">
+                        <option value="">ทุกปีการศึกษา</option>
+                    </select>
+                    <select id="filterTerm" onchange="loadReportData()" class="border border-blue-200 rounded-full px-4 py-2 focus:ring-school outline-none transition shadow-sm text-sm">
+                        <option value="">ทุกภาคเรียน</option>
+                        <option value="1">ภาคเรียนที่ 1</option>
+                        <option value="2">ภาคเรียนที่ 2</option>
+                    </select>
+                    <div class="relative">
+                        <input type="text" id="searchReports" onkeyup="filterReports()" placeholder="ค้นหาชื่อครู, วิชา..."
+                            class="border border-blue-200 rounded-full pl-10 pr-4 py-2 w-64 md:w-80 focus:ring-school outline-none transition shadow-sm">
+                        <div class="absolute left-4 top-2.5 text-blue-400"><i class="fas fa-search"></i></div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto rounded-lg border border-blue-100 shadow-sm">
+                    <table class="min-w-full divide-y divide-blue-200" id="reportTable">
+                        <thead class="bg-school text-white">
+                            <tr>
+                                <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">วันที่
+                                </th>
+                                <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">ชื่อครู
+                                </th>
+                                <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">วิชา</th>
+                                <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider">ร้อยละ
+                                </th>
+                                <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider">ระดับ
+                                </th>
+                                <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider">
+                                    จัดการเอกสาร</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-blue-50" id="report-table-body">
+                            <tr>
+                                <td colspan="6" class="text-center py-8 text-blue-500"><i
+                                        class="fas fa-spinner fa-spin fa-2x"></i><br>กำลังโหลดข้อมูล...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="reports-pagination"></div>
+            </div>
+        </div>

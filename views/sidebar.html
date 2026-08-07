@@ -1,0 +1,112 @@
+<!-- Sidebar -->
+<aside id="sidebar"
+    class="w-72 bg-school-dark text-white flex flex-col h-screen fixed md:relative z-40 transition-all duration-300 ease-in-out transform -translate-x-full md:translate-x-0 shadow-[4px_0_24px_rgba(0,0,0,0.1)]">
+    <div class="p-6 border-b border-white/10 flex items-center justify-between">
+        <div class="flex items-center">
+            <img id="sidebar-school-logo" src="" alt="Logo"
+                class="w-9 h-9 object-contain mr-3 bg-white/90 rounded-xl p-1 shadow-sm hidden">
+            <div id="sidebar-default-logo"
+                class="w-9 h-9 bg-blue-500/20 rounded-xl flex items-center justify-center mr-3 border border-blue-400/30">
+                <i class="fa-solid fa-graduation-cap text-blue-300 text-lg"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-xl leading-tight tracking-wide">ระบบนิเทศ</h1>
+                <p id="sidebar-school-name" class="text-blue-300/80 text-xs mt-0.5 truncate w-40 font-light">
+                    ชื่อโรงเรียน</p>
+            </div>
+        </div>
+        <button onclick="toggleSidebar()" class="md:hidden text-gray-400 hover:text-white transition-colors"><i
+                class="fas fa-times text-xl"></i></button>
+    </div>
+    <div class="px-6 py-5 border-b border-white/5 bg-white/5 backdrop-blur-sm">
+        <p class="text-xs text-gray-400/80 mb-2 font-medium tracking-wide">เข้าสู่ระบบโดย</p>
+        <div class="flex items-center">
+            <div
+                class="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-600 to-blue-400 border border-white/20 flex items-center justify-center text-white font-bold mr-3 shadow-lg">
+                <i class="fas fa-user"></i>
+            </div>
+            <div>
+                <p id="sidebar-user-name" class="font-semibold text-sm truncate w-40 text-gray-100"></p>
+                <p id="sidebar-user-role" class="text-[11px] text-blue-300 capitalize mt-0.5 flex items-center"><span
+                        class="w-1.5 h-1.5 rounded-full bg-green-400 mr-1.5 shadow-[0_0_5px_rgba(74,222,128,0.5)]"></span><span
+                        id="role-text"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <nav class="flex-1 px-4 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+        <p class="px-4 text-[10px] font-bold text-gray-400/60 uppercase tracking-widest mb-3">เมนูหลัก</p>
+
+        <button onclick="switchView('home')"
+            class="w-full text-left text-gray-300 hover:bg-white/10 hover:text-white px-4 py-2.5 rounded-xl transition-all duration-200 group flex items-center hover:translate-x-1 hover:shadow-sm">
+            <div class="w-8 flex justify-center"><i
+                    class="fas fa-home text-blue-400/80 group-hover:text-white group-hover:scale-110 transition-transform"></i>
+            </div> แดชบอร์ด
+        </button>
+
+        <button onclick="switchView('supervision_list')"
+            class="w-full text-left text-gray-300 hover:bg-white/10 hover:text-white px-4 py-2.5 rounded-xl transition-all duration-200 group flex items-center hover:translate-x-1 hover:shadow-sm">
+            <div class="w-8 flex justify-center"><i
+                    class="fas fa-edit text-blue-400/80 group-hover:text-white group-hover:scale-110 transition-transform"></i>
+            </div> บันทึกการนิเทศ
+        </button>
+
+        <button onclick="switchView('report')"
+            class="w-full text-left text-gray-300 hover:bg-white/10 hover:text-white px-4 py-2.5 rounded-xl transition-all duration-200 group flex items-center hover:translate-x-1 hover:shadow-sm">
+            <div class="w-8 flex justify-center"><i
+                    class="fas fa-chart-bar text-blue-400/80 group-hover:text-white group-hover:scale-110 transition-transform"></i>
+            </div> ทะเบียนรายงาน
+        </button>
+
+        <button onclick="switchView('analytics')"
+            class="w-full text-left text-gray-300 hover:bg-white/10 hover:text-white px-4 py-2.5 rounded-xl transition-all duration-200 group flex items-center hover:translate-x-1 hover:shadow-sm">
+            <div class="w-8 flex justify-center"><i
+                    class="fas fa-chart-pie text-blue-400/80 group-hover:text-white group-hover:scale-110 transition-transform"></i>
+            </div> สรุปสารสนเทศการประเมิน
+        </button>
+
+        <!-- แถบเมนูสำหรับแอดมิน -->
+        <div id="sidebar-admin-section" class="hidden">
+            <div class="pt-6 pb-3">
+                <p class="px-4 text-[10px] font-bold text-gray-400/60 uppercase tracking-widest">ผู้ดูแลระบบ</p>
+            </div>
+            <button onclick="switchView('assignments')"
+                class="w-full text-left text-gray-300 hover:bg-white/10 hover:text-white px-4 py-2.5 rounded-xl transition-all duration-200 group flex items-center hover:translate-x-1 hover:shadow-sm">
+                <div class="w-8 flex justify-center"><i
+                        class="fas fa-tasks text-teal-400/80 group-hover:text-white group-hover:scale-110 transition-transform"></i>
+                </div> มอบหมายการนิเทศ
+            </button>
+            <button onclick="switchView('settings')"
+                class="w-full text-left text-gray-300 hover:bg-white/10 hover:text-white px-4 py-2.5 rounded-xl transition-all duration-200 group flex items-center hover:translate-x-1 hover:shadow-sm">
+                <div class="w-8 flex justify-center"><i
+                        class="fas fa-cog text-teal-400/80 group-hover:text-white group-hover:scale-110 transition-transform"></i>
+                </div> ตั้งค่าระบบ
+            </button>
+            <button onclick="switchView('users')"
+                class="w-full text-left text-gray-300 hover:bg-white/10 hover:text-white px-4 py-2.5 rounded-xl transition-all duration-200 group flex items-center hover:translate-x-1 hover:shadow-sm">
+                <div class="w-8 flex justify-center"><i
+                        class="fas fa-users text-teal-400/80 group-hover:text-white group-hover:scale-110 transition-transform"></i>
+                </div> จัดการผู้ใช้งาน
+            </button>
+            <button onclick="switchView('logs')"
+                class="w-full text-left text-gray-300 hover:bg-white/10 hover:text-white px-4 py-2.5 rounded-xl transition-all duration-200 group flex items-center hover:translate-x-1 hover:shadow-sm">
+                <div class="w-8 flex justify-center"><i
+                        class="fas fa-history text-teal-400/80 group-hover:text-white group-hover:scale-110 transition-transform"></i>
+                </div> ประวัติการใช้งาน
+            </button>
+        </div>
+    </nav>
+
+    <div class="p-4 border-t border-white/10 space-y-1 bg-white/5 backdrop-blur-sm">
+        <button onclick="showChangePasswordModal()"
+            class="w-full text-left text-yellow-300/90 hover:bg-white/10 hover:text-yellow-300 px-4 py-2 rounded-xl transition-all duration-200 flex items-center group hover:translate-x-1">
+            <div class="w-8 flex justify-center"><i class="fas fa-key group-hover:scale-110 transition-transform"></i>
+            </div> เปลี่ยนรหัสผ่าน
+        </button>
+        <a href="../auth/logout.html"
+            class="block w-full text-left text-red-400/90 hover:bg-red-500/20 hover:text-red-400 px-4 py-2 rounded-xl transition-all duration-200 flex items-center group hover:translate-x-1">
+            <div class="w-8 flex justify-center"><i
+                    class="fas fa-sign-out-alt group-hover:scale-110 transition-transform"></i></div> ออกจากระบบ
+        </a>
+    </div>
+</aside>

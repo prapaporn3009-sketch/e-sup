@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <link rel="manifest" href="../assets/manifest.json">
+    <link rel="apple-touch-icon" href="../assets/img/app-icon.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เข้าสู่ระบบ - ระบบบันทึกการนิเทศการสอน</title>
+    <link rel="icon" type="image/png" id="school-logo-favicon" href="">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="../assets/js/tailwind.config.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-6 bg-[#f0fdf4] gap-6">
+    <div class="bg-white rounded-2xl shadow-xl border border-green-200 p-8 max-w-md w-full">
+        <div class="text-center mb-8">
+            <div id="logo-container">
+                <img id="school-logo-img" src="" alt="Logo" class="mx-auto h-20 object-contain mb-4 hidden">
+                <div id="default-logo" class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 text-green-600 mb-4">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                    </svg>
+                </div>
+            </div>
+            
+            <h2 class="text-2xl font-bold text-green-800">เข้าสู่ระบบ</h2>
+            <p class="text-gray-500 mt-2 school-name-text">ระบบบันทึกผลการนิเทศการสอน</p>
+        </div>
+
+        <form id="loginForm" class="space-y-6" onsubmit="event.preventDefault(); handleLogin();">
+            <div>
+                <label for="username" class="block text-sm font-medium text-gray-700">ชื่อผู้ใช้งาน</label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                    </div>
+                    <input type="text" id="username" name="username" required class="focus:ring-green-500 focus:border-green-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 border" placeholder="Username">
+                </div>
+            </div>
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-700">รหัสผ่าน</label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    </div>
+                    <input type="password" id="password" name="password" required class="focus:ring-green-500 focus:border-green-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 border" placeholder="Password">
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">
+                    เข้าสู่ระบบ
+                </button>
+            </div>
+            
+            <div class="mt-4 text-center">
+                <a href="../index.html" class="text-sm font-medium text-green-600 hover:text-green-500 flex items-center justify-center transition-colors">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    กลับสู่หน้าหลัก
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="w-full max-w-md" id="footer-container">
+        <!-- Footer will be loaded dynamically -->
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script>
+        // โหลดข้อมูลประกอบและตรวจสอบเซสชันเมื่อโหลดหน้าเสร็จ
+        window.addEventListener('DOMContentLoaded', () => {
+            if (getSession()) {
+                window.location.href = '../views/dashboard.html';
+                return;
+            }
+
+            // โหลด Footer แบบไดนามิก
+            fetch('../views/footer.html')
+                .then(res => res.text())
+                .then(html => {
+                    document.getElementById('footer-container').innerHTML = html;
+                    // อัปเดตปีปัจจุบันใน Footer
+                    const yrEl = document.getElementById('footer-year');
+                    if (yrEl) yrEl.textContent = new Date().getFullYear();
+                })
+                .catch(err => console.error("Error loading footer:", err));
+
+            // ดึงการตั้งค่าโรงเรียน
+            if (GAS_API_URL) {
+                fetch(GAS_API_URL + '?action=getSettings')
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success && res.data) {
+                            const data = res.data;
+                            if (data.school_name) {
+                                document.querySelectorAll('.school-name-text').forEach(el => {
+                                    el.textContent = data.school_name;
+                                });
+                                document.title = "เข้าสู่ระบบ - " + data.school_name;
+                            }
+                            if (data.school_logo) {
+                                const logoImg = document.getElementById('school-logo-img');
+                                const defaultLogo = document.getElementById('default-logo');
+                                const favicon = document.getElementById('school-logo-favicon');
+                                
+                                if (logoImg) {
+                                    logoImg.src = data.school_logo;
+                                    logoImg.classList.remove('hidden');
+                                }
+                                if (defaultLogo) defaultLogo.classList.add('hidden');
+                                if (favicon) favicon.href = data.school_logo;
+                            }
+                        }
+                    })
+                    .catch(err => console.error("Error loading settings:", err));
+            }
+        });
+
+        // ฟังก์ชันจัดการการล็อกอิน
+        function handleLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            Swal.fire({
+                title: 'กำลังตรวจสอบ...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+
+            callGAS('login', {
+                method: 'POST',
+                body: { username: username, password: password }
+            })
+            .then(data => {
+                if (data.success) {
+                    // ล้างแคช API สถิติเดิมออกจาก Browser เมื่อเข้าสู่ระบบสำเร็จ
+                    Object.keys(sessionStorage).forEach(key => { if (key.startsWith('gas_cache_')) sessionStorage.removeItem(key); });
+                    Object.keys(localStorage).forEach(key => { if (key.startsWith('gas_cache_')) localStorage.removeItem(key); });
+
+                    saveSession(data.user);
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'เข้าสู่ระบบสำเร็จ',
+                        showConfirmButton: false,
+                        timer: 1500
+                    }).then(() => {
+                        window.location.href = '../views/dashboard.html';
+                    });
+                } else {
+                    Swal.fire('ข้อผิดพลาด', data.message || 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง', 'error');
+                }
+            })
+            .catch(err => {
+                Swal.fire('ข้อผิดพลาด', err.message || 'ไม่สามารถเชื่อมต่อระบบได้ คีย์หลังบ้านไม่ถูกต้อง', 'error');
+            });
+        }
+    </script>
+</body>
+</html>

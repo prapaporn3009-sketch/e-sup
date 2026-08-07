@@ -1,0 +1,213 @@
+<div id="view-home" class="view-section fade-in">
+    <div class="py-6">
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h2 class="text-3xl font-bold text-gray-800">แดชบอร์ดสรุปผลการนิเทศ</h2>
+                <p class="text-gray-500">ภาพรวมการประเมินการจัดการเรียนการสอน</p>
+            </div>
+            <button onclick="loadDashboardStats()" class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-100 transition shadow-sm">
+                <i class="fas fa-sync-alt mr-2"></i>อัปเดตข้อมูล
+            </button>
+        </div>
+
+        <!-- 4 Stat Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-school">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 mb-1">จำนวนการนิเทศ (ครั้ง)</p>
+                        <h3 class="text-3xl font-bold text-gray-800" id="stat-total-eval"><div class="h-8 w-16 bg-slate-200 rounded animate-pulse"></div></h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-school text-xl">
+                        <i class="fas fa-clipboard-list"></i>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-green-500">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 mb-1">คะแนนเฉลี่ยรวม</p>
+                        <h3 class="text-3xl font-bold text-gray-800" id="stat-avg-score"><div class="h-8 w-16 bg-slate-200 rounded animate-pulse"></div></h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xl">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-yellow-500">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 mb-1">จำนวนครูในระบบ</p>
+                        <h3 class="text-3xl font-bold text-gray-800" id="stat-total-teachers"><div class="h-8 w-16 bg-slate-200 rounded animate-pulse"></div></h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 text-xl">
+                        <i class="fas fa-chalkboard-teacher"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-<?php echo $topCriteriaColor; ?>-500">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 mb-1">ผลประเมิน "<?php echo $topCriteriaName; ?>"</p>
+                        <h3 class="text-3xl font-bold text-gray-800" id="stat-level-excellent"><div class="h-8 w-16 bg-slate-200 rounded animate-pulse"></div></h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-<?php echo $topCriteriaColor; ?>-100 flex items-center justify-center text-<?php echo $topCriteriaColor; ?>-600 text-xl">
+                        <i class="fas fa-award"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Links -->
+        <h3 class="text-xl font-bold text-gray-800 mb-4 mt-8 border-b pb-2">เมนูลัด (Quick Links)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl">
+            <div onclick="switchView('form')"
+                class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition cursor-pointer flex items-center space-x-4 border border-gray-100">
+                <div class="w-14 h-14 bg-blue-50 text-school rounded-full flex items-center justify-center text-2xl">
+                    <i class="fas fa-edit"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">บันทึกการนิเทศ</h3>
+                    <p class="text-gray-500 text-sm">เริ่มประเมินการสอนใหม่</p>
+                </div>
+            </div>
+            <div onclick="switchView('report')"
+                class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition cursor-pointer flex items-center space-x-4 border border-gray-100">
+                <div class="w-14 h-14 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-2xl">
+                    <i class="fas fa-list-alt"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">ระบบรายงาน</h3>
+                    <p class="text-gray-500 text-sm">ดูผลและพิมพ์ PDF</p>
+                </div>
+            </div>
+            <div onclick="switchView('analytics')"
+                class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition cursor-pointer flex items-center space-x-4 border border-gray-100">
+                <div class="w-14 h-14 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center text-2xl">
+                    <i class="fas fa-chart-pie"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">สรุปสารสนเทศ</h3>
+                    <p class="text-gray-500 text-sm">วิเคราะห์ข้อมูล/ส่งออกผู้บริหาร</p>
+                </div>
+            </div>
+            <div onclick="switchView('users')" id="quick-link-users"
+                class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition cursor-pointer flex items-center space-x-4 border border-gray-100">
+                <div class="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-2xl">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">จัดการบุคลากร</h3>
+                    <p class="text-gray-500 text-sm">เพิ่ม/นำเข้ารายชื่อครู</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assigned Tasks -->
+        <h3 class="text-xl font-bold text-gray-800 mb-4 mt-10 border-b pb-2">งานนิเทศที่ได้รับมอบหมาย</h3>
+        <div class="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden max-w-5xl">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-blue-200">
+                    <thead class="bg-blue-50 text-gray-700">
+                        <tr>
+                            <th class="px-6 py-3 text-center text-xs font-semibold uppercase">ภาคเรียน</th>
+                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase">ผู้ถูกประเมิน (ครู)</th>
+                            <th class="px-6 py-3 text-center text-xs font-semibold uppercase">สถานะ</th>
+                            <th class="px-6 py-3 text-center text-xs font-semibold uppercase">ดำเนินการ</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-blue-50" id="home-assignments-body">
+                        <tr><td colspan="4" class="text-center py-4 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function loadDashboardStats() {
+    fetch('../api/dashboard_stats.php')
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                document.getElementById('stat-total-eval').innerText = data.data.total_evaluations;
+                document.getElementById('stat-avg-score').innerText = data.data.avg_score + '%';
+                document.getElementById('stat-total-teachers').innerText = data.data.total_teachers;
+                
+                const levelsKeys = Object.keys(data.data.levels || {});
+                const topKey = levelsKeys.length > 0 ? levelsKeys[0] : 'ยอดเยี่ยม';
+                const excellentCount = data.data.levels[topKey] || 0;
+                document.getElementById('stat-level-excellent').innerText = excellentCount;
+            }
+        })
+        .catch(err => console.error("Failed to load stats:", err));
+}
+
+// โหลดข้อมูลทันทีเมื่อถูกนำมาอินเจคชั่น
+loadDashboardStats();
+loadHomeAssignments();
+
+function loadHomeAssignments() {
+    const tbody = document.getElementById('home-assignments-body');
+    if (tbody && typeof getSkeletonRows === 'function') {
+        tbody.innerHTML = getSkeletonRows(4, 3);
+    }
+    fetch('../api/assignments.php?action=list')
+        .then(res => res.json())
+        .then(res => {
+            if (res.success) {
+                const tbody = document.getElementById('home-assignments-body');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                
+                // สำหรับครู ให้แสดงเฉพาะงานที่ตัวเองเป็น observer, ถ้าเป็นแอดมิน แสดงทั้งหมด 5 รายการล่าสุด
+                let tasks = res.data;
+                const isTeacher = window.userRole !== 'admin';
+                if (isTeacher) {
+                    tasks = tasks.filter(a => String(a.observer_id) === String(window.userId));
+                }
+                
+                if (tasks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-gray-500">ไม่มีงานนิเทศที่ได้รับมอบหมาย</td></tr>';
+                    return;
+                }
+                
+                // Show max 5 items
+                tasks.slice(0, 5).forEach(a => {
+                    const statusBadge = a.status === 'pending'
+                        ? '<span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full"><i class="fas fa-clock mr-1"></i>รอดำเนินการ</span>'
+                        : '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full"><i class="fas fa-check mr-1"></i>เสร็จสิ้น</span>';
+                    
+                    const actionBtn = a.status === 'pending'
+                        ? `<button onclick="startEvalFromHome(${a.teacher_id}, ${a.term_id})" class="bg-school text-white px-3 py-1 text-sm rounded hover:bg-school-dark transition shadow-sm">ประเมิน</button>`
+                        : `<button disabled class="bg-gray-300 text-gray-600 px-3 py-1 text-sm rounded cursor-not-allowed">ประเมินแล้ว</button>`;
+
+                    tbody.insertAdjacentHTML('beforeend', `
+                        <tr class="hover:bg-blue-50">
+                            <td class="px-6 py-4 text-center text-sm">${a.year}/${a.term_name}</td>
+                            <td class="px-6 py-4 font-medium text-sm text-gray-800">${a.teacher_name}</td>
+                            <td class="px-6 py-4 text-center">${statusBadge}</td>
+                            <td class="px-6 py-4 text-center">${actionBtn}</td>
+                        </tr>
+                    `);
+                });
+            }
+        });
+}
+
+function startEvalFromHome(teacherId, termId) {
+    switchView('form');
+    setTimeout(() => {
+        const tSelect = document.getElementById('f_teacher');
+        if(tSelect) {
+            tSelect.value = teacherId;
+            teacherSelected(teacherId); // trigger data load
+        }
+    }, 500);
+}
+</script>
