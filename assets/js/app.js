@@ -175,10 +175,10 @@ class TablePaginator {
             }
             
             const colorOptions = [
-                { val: 'green', label: 'เขียว (ดีมาก)' },
+                { val: 'green', label: 'เขียว (ยอดเยี่ยม / ดีเลิศ)' },
                 { val: 'blue', label: 'น้ำเงิน (ดี)' },
-                { val: 'yellow', label: 'เหลือง (พอใช้)' },
-                { val: 'orange', label: 'ส้ม (ควรปรับปรุง)' },
+                { val: 'yellow', label: 'เหลือง (ปานกลาง)' },
+                { val: 'orange', label: 'ส้ม (ควรพัฒนา)' },
                 { val: 'red', label: 'แดง (ไม่ผ่าน)' }
             ];
             
@@ -455,19 +455,34 @@ function saveConfigOriginal() {
         function calcScore() {
             const radios = document.querySelectorAll('#eval-table-body input[type="radio"]:checked');
             let sum = 0;
-            radios.forEach(r => sum += parseInt(r.value));
+            radios.forEach(r => sum += parseInt(r.value, 10));
 
-            const max = parseInt(document.getElementById('display-max').innerText) || 1;
-            const percent = ((sum / max) * 100).toFixed(2);
+            const max = parseInt(document.getElementById('display-max').innerText, 10) || 1;
+            const percentVal = parseFloat(((sum / max) * 100).toFixed(2));
 
             let level = "ไม่ผ่าน", color = "text-red-600 border-red-200";
-            if (percent >= 91) { level = "ดีมาก"; color = "text-green-600 border-green-200"; }
-            else if (percent >= 81) { level = "ดี"; color = "text-blue-600 border-blue-200"; }
-            else if (percent >= 71) { level = "พอใช้"; color = "text-yellow-600 border-yellow-200"; }
-            else if (percent >= 61) { level = "ควรปรับปรุง"; color = "text-orange-600 border-orange-200"; }
+            if (window.evaluationCriteria && window.evaluationCriteria.length > 0) {
+                const criteria = window.evaluationCriteria;
+                for (let i = 0; i < criteria.length; i++) {
+                    const cMin = parseFloat(criteria[i].min) || 0;
+                    const cMax = parseFloat(criteria[i].max) || 0;
+                    if (percentVal >= cMin && percentVal <= cMax) {
+                        level = criteria[i].name;
+                        const col = criteria[i].color || 'red';
+                        color = `text-${col}-600 border-${col}-200`;
+                        break;
+                    }
+                }
+            } else {
+                if (percentVal >= 91) { level = "ยอดเยี่ยม"; color = "text-green-600 border-green-200"; }
+                else if (percentVal >= 81) { level = "ดีเลิศ"; color = "text-green-600 border-green-200"; }
+                else if (percentVal >= 71) { level = "ดี"; color = "text-blue-600 border-blue-200"; }
+                else if (percentVal >= 61) { level = "ปานกลาง"; color = "text-yellow-600 border-yellow-200"; }
+                else { level = "ควรพัฒนา"; color = "text-orange-600 border-orange-200"; }
+            }
 
             document.getElementById('display-total').innerText = sum;
-            document.getElementById('display-percent').innerText = percent;
+            document.getElementById('display-percent').innerText = percentVal.toFixed(2);
 
             const lvlEl = document.getElementById('display-level');
             lvlEl.innerText = level;
@@ -614,12 +629,25 @@ function saveConfigOriginal() {
                             paginationContainerId: 'reports-pagination',
                             pageSize: 10,
                             renderRow: (row) => {
+                                let percentVal = parseFloat(row.percent) || 0;
+                                let displayLevel = row.level;
+                                if (window.evaluationCriteria && window.evaluationCriteria.length > 0) {
+                                    const matched = window.evaluationCriteria.find(c => percentVal >= Number(c.min) && percentVal <= Number(c.max));
+                                    if (matched) displayLevel = matched.name;
+                                } else {
+                                    if (percentVal >= 91) displayLevel = "ยอดเยี่ยม";
+                                    else if (percentVal >= 81) displayLevel = "ดีเลิศ";
+                                    else if (percentVal >= 71) displayLevel = "ดี";
+                                    else if (percentVal >= 61) displayLevel = "ปานกลาง";
+                                    else if (percentVal > 0) displayLevel = "ควรพัฒนา";
+                                }
+
                                 let lvlColor = "text-gray-600 bg-gray-100";
-                                if (row.level === 'ดีมาก') lvlColor = "text-green-700 bg-green-100";
-                                else if (row.level === 'ดี') lvlColor = "text-blue-700 bg-blue-100";
-                                else if (row.level === 'ไม่ผ่าน') lvlColor = "text-red-700 bg-red-100";
-                                else if (row.level === 'พอใช้') lvlColor = "text-yellow-700 bg-yellow-100";
-                                else if (row.level === 'ควรปรับปรุง') lvlColor = "text-orange-700 bg-orange-100";
+                                if (displayLevel === 'ยอดเยี่ยม' || displayLevel === 'ดีมาก' || displayLevel === 'ดีเลิศ') lvlColor = "text-green-700 bg-green-100";
+                                else if (displayLevel === 'ดี') lvlColor = "text-blue-700 bg-blue-100";
+                                else if (displayLevel === 'ปานกลาง' || displayLevel === 'พอใช้') lvlColor = "text-yellow-700 bg-yellow-100";
+                                else if (displayLevel === 'ควรพัฒนา' || displayLevel === 'ควรปรับปรุง') lvlColor = "text-orange-700 bg-orange-100";
+                                else if (displayLevel === 'ไม่ผ่าน') lvlColor = "text-red-700 bg-red-100";
                                 
                                 let docBtns = `<a href="preview_report.php?id=${row.id}" target="_blank" class="inline-flex items-center bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700 transition shadow-sm" title="ดูรายงาน/พิมพ์ PDF"><i class="fas fa-print mr-1"></i> ดูรายงาน / พิมพ์ PDF</a>`;
                                 
@@ -633,18 +661,25 @@ function saveConfigOriginal() {
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 search-target">${row.teacher || '-'}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 search-target">${row.subject || '-'}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-school">${row.percent || '0'}%</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center"><span class="px-3 py-1 rounded-full text-xs font-bold ${lvlColor}">${row.level || '-'}</span></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center"><span class="px-3 py-1 rounded-full text-xs font-bold ${lvlColor}">${displayLevel || '-'}</span></td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-center">${docBtns}</td>
                                 </tr>
                                 `;
                             },
                             filter: (items) => {
                                 const input = document.getElementById('searchReports') ? document.getElementById('searchReports').value.toLowerCase() : '';
-                                return items.filter(row => 
-                                    (row.teacher && row.teacher.toLowerCase().includes(input)) ||
-                                    (row.subject && row.subject.toLowerCase().includes(input)) ||
-                                    (row.level && row.level.toLowerCase().includes(input))
-                                );
+                                return items.filter(row => {
+                                    let percentVal = parseFloat(row.percent) || 0;
+                                    let displayLevel = row.level;
+                                    if (window.evaluationCriteria && window.evaluationCriteria.length > 0) {
+                                        const matched = window.evaluationCriteria.find(c => percentVal >= Number(c.min) && percentVal <= Number(c.max));
+                                        if (matched) displayLevel = matched.name;
+                                    }
+                                    return (row.teacher && row.teacher.toLowerCase().includes(input)) ||
+                                           (row.subject && row.subject.toLowerCase().includes(input)) ||
+                                           (displayLevel && displayLevel.toLowerCase().includes(input)) ||
+                                           (row.level && row.level.toLowerCase().includes(input));
+                                });
                             }
                         });
                     }
@@ -1399,11 +1434,11 @@ function saveConfigOriginal() {
                             }
                         }
                         
-                        document.getElementById('f_department').value = data.department;
-                        document.getElementById('f_subject').value = data.subject;
-                        document.getElementById('f_class').value = data.class;
-                        document.getElementById('f_date').value = data.date;
-                        document.getElementById('f_time').value = data.time;
+                        document.getElementById('f_department').value = data.department || '';
+                        document.getElementById('f_subject').value = data.subject || '';
+                        document.getElementById('f_class').value = data.class || '';
+                        document.getElementById('f_date').value = data.date ? (data.date.includes('T') ? data.date.split('T')[0] : data.date) : '';
+                        document.getElementById('f_time').value = data.time || '';
                         document.getElementById('f_observer').value = data.observer;
                         document.getElementById('f_teacher_pos').value = data.teacher_position;
                         document.getElementById('f_observer_pos').value = data.observer_position;

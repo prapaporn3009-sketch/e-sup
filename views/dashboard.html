@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ระบบบันทึกการนิเทศการสอน</title>
-    <link rel="icon" type="image/png" id="school-logo-favicon" href="">
+    <link rel="icon" id="school-logo-favicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 
     <!-- Configuration & Session Helper -->
     <script src="../assets/js/config.js"></script>
@@ -224,34 +224,47 @@
                 }
 
                 return originalFetch(gasUrl, gasConfig).then(response => {
-                    if (response.ok) {
-                        const cloneForAuth = response.clone();
-                        cloneForAuth.text().then(text => {
-                            try {
-                                const parsed = JSON.parse(text);
-                                
-                                // ตรวจสอบเซสชันหมดอายุ หรือ ปฏิเสธสิทธิ์การเข้าถึง
-                                if (parsed && parsed.success === false && (parsed.status === 401 || (parsed.message && (parsed.message.includes('เซสชัน') || parsed.message.includes('หมดอายุ') || parsed.message.includes('สิทธิ์การเข้าถึง'))))) {
-                                    Swal.fire({
-                                        title: 'หมดเวลาเชื่อมต่อหรือเซสชันไม่ถูกต้อง',
-                                        text: parsed.message || 'กรุณาเข้าสู่ระบบใหม่อีกครั้งเพื่อความปลอดภัย',
-                                        icon: 'warning',
-                                        confirmButtonText: 'ตกลง'
-                                    }).then(() => {
-                                        clearSession();
-                                        window.location.href = '../auth/login.html';
-                                    });
-                                } else if (isGetRequest && parsed && parsed.success) {
-                                    // บันทึกลงแคชเฉพาะคำขอที่เป็นสำเร็จและไม่ใช่ error เท่านั้น
-                                    storage.setItem(cacheKey, text);
-                                    storage.setItem(cacheKey + '_time', Date.now());
-                                }
-                            } catch(e) {
-                                console.warn('JSON parsing failed on response check', e);
-                            }
-                        }).catch(e => console.warn('Failed to clone response for checking', e));
+                    if (!response.ok) {
+                        let errMsg = `เกิดข้อผิดพลาดในการเชื่อมต่อหลังบ้าน (HTTP ${response.status})`;
+                        if (response.status === 404) {
+                            errMsg = `ไม่พบลิงก์ Google Apps Script Web App (HTTP 404) กรุณาตรวจสอบการตั้งค่า Deploy ใน Apps Script ให้สิทธิ์ "Anyone" (ทุกคน) และอัปเดต URL ใน assets/js/config.js`;
+                        }
+                        return new Response(JSON.stringify({ success: false, status: response.status, message: errMsg }), {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
                     }
+                    const cloneForAuth = response.clone();
+                    cloneForAuth.text().then(text => {
+                        try {
+                            const parsed = JSON.parse(text);
+                            
+                            // ตรวจสอบเซสชันหมดอายุ หรือ ปฏิเสธสิทธิ์การเข้าถึง
+                            if (parsed && parsed.success === false && (parsed.status === 401 || (parsed.message && (parsed.message.includes('เซสชัน') || parsed.message.includes('หมดอายุ') || parsed.message.includes('สิทธิ์การเข้าถึง'))))) {
+                                Swal.fire({
+                                    title: 'หมดเวลาเชื่อมต่อหรือเซสชันไม่ถูกต้อง',
+                                    text: parsed.message || 'กรุณาเข้าสู่ระบบใหม่อีกครั้งเพื่อความปลอดภัย',
+                                    icon: 'warning',
+                                    confirmButtonText: 'ตกลง'
+                                }).then(() => {
+                                    clearSession();
+                                    window.location.href = '../auth/login.html';
+                                });
+                            } else if (isGetRequest && parsed && parsed.success) {
+                                // บันทึกลงแคชเฉพาะคำขอที่เป็นสำเร็จและไม่ใช่ error เท่านั้น
+                                storage.setItem(cacheKey, text);
+                                storage.setItem(cacheKey + '_time', Date.now());
+                            }
+                        } catch(e) {
+                            console.warn('JSON parsing failed on response check', e);
+                        }
+                    }).catch(e => console.warn('Failed to clone response for checking', e));
                     return response;
+                }).catch(err => {
+                    return new Response(JSON.stringify({ success: false, message: 'ไม่สามารถเชื่อมต่อระบบหลังบ้านได้: ' + err.message }), {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
                 });
             }
             return originalFetch(resource, config);
@@ -527,10 +540,10 @@
             }
             
             const colorOptions = [
-                { val: 'green', label: 'เขียว (ดีมาก)' },
+                { val: 'green', label: 'เขียว (ยอดเยี่ยม / ดีเลิศ)' },
                 { val: 'blue', label: 'น้ำเงิน (ดี)' },
-                { val: 'yellow', label: 'เหลือง (พอใช้)' },
-                { val: 'orange', label: 'ส้ม (ควรปรับปรุง)' },
+                { val: 'yellow', label: 'เหลือง (ปานกลาง)' },
+                { val: 'orange', label: 'ส้ม (ควรพัฒนา)' },
                 { val: 'red', label: 'แดง (ไม่ผ่าน)' }
             ];
             
@@ -662,28 +675,32 @@
                 if (fObserverPosInput) fObserverPosInput.value = window.userPosition || '-';
 
                 // โหลดข้อมูลโรงเรียน
-                if (GAS_API_URL) {
-                    const settingsRes = await fetch(GAS_API_URL + '?action=getSettings').then(r => r.json());
-                    if (settingsRes.success && settingsRes.data) {
-                        const data = settingsRes.data;
-                        window.schoolSettings = data;
-                        if (data.school_name) {
-                            const nameText = document.getElementById('sidebar-school-name');
-                            if (nameText) nameText.textContent = data.school_name;
-                            document.title = "ระบบนิเทศการสอน - " + data.school_name;
-                        }
-                        if (data.school_logo) {
-                            const logoImg = document.getElementById('sidebar-school-logo');
-                            const defaultLogo = document.getElementById('sidebar-default-logo');
-                            const favicon = document.getElementById('school-logo-favicon');
-                            
-                            if (logoImg) {
-                                logoImg.src = data.school_logo;
-                                logoImg.classList.remove('hidden');
+                if (GAS_API_URL && typeof callGAS === 'function') {
+                    try {
+                        const settingsRes = await callGAS('getSettings');
+                        if (settingsRes && settingsRes.success && settingsRes.data) {
+                            const data = settingsRes.data;
+                            window.schoolSettings = data;
+                            if (data.school_name) {
+                                const nameText = document.getElementById('sidebar-school-name');
+                                if (nameText) nameText.textContent = data.school_name;
+                                document.title = "ระบบนิเทศการสอน - " + data.school_name;
                             }
-                            if (defaultLogo) defaultLogo.classList.add('hidden');
-                            if (favicon) favicon.href = data.school_logo;
+                            if (data.school_logo) {
+                                const logoImg = document.getElementById('sidebar-school-logo');
+                                const defaultLogo = document.getElementById('sidebar-default-logo');
+                                const favicon = document.getElementById('school-logo-favicon');
+                                
+                                if (logoImg) {
+                                    logoImg.src = data.school_logo;
+                                    logoImg.classList.remove('hidden');
+                                }
+                                if (defaultLogo) defaultLogo.classList.add('hidden');
+                                if (favicon) favicon.href = data.school_logo;
+                            }
                         }
+                    } catch (e) {
+                        console.warn("[loadComponents] ไม่สามารถโหลดการตั้งค่าโรงเรียนได้:", e.message);
                     }
                 }
                 
@@ -772,8 +789,13 @@
                             elLogo.src = res.data.school_logo;
                         }
 
-                        if (res.data.evaluation_criteria) {
-                            criteriaData = res.data.evaluation_criteria;
+                        if (res.data.evaluation_criteria && Array.isArray(res.data.evaluation_criteria)) {
+                            criteriaData = res.data.evaluation_criteria.map(c => ({
+                                ...c,
+                                min: parseFloat(c.min) || 0,
+                                max: parseFloat(c.max) || 0
+                            }));
+                            window.evaluationCriteria = criteriaData;
                             renderCriteriaEditor();
                         }
                     }
@@ -1084,19 +1106,34 @@ function saveConfigOriginal() {
         function calcScore() {
             const radios = document.querySelectorAll('#eval-table-body input[type="radio"]:checked');
             let sum = 0;
-            radios.forEach(r => sum += parseInt(r.value));
+            radios.forEach(r => sum += parseInt(r.value, 10));
 
-            const max = parseInt(document.getElementById('display-max').innerText) || 1;
-            const percent = ((sum / max) * 100).toFixed(2);
+            const max = parseInt(document.getElementById('display-max').innerText, 10) || 1;
+            const percentVal = parseFloat(((sum / max) * 100).toFixed(2));
 
             let level = "ไม่ผ่าน", color = "text-red-600 border-red-200";
-            if (percent >= 91) { level = "ดีมาก"; color = "text-green-600 border-green-200"; }
-            else if (percent >= 81) { level = "ดี"; color = "text-blue-600 border-blue-200"; }
-            else if (percent >= 71) { level = "พอใช้"; color = "text-yellow-600 border-yellow-200"; }
-            else if (percent >= 61) { level = "ควรปรับปรุง"; color = "text-orange-600 border-orange-200"; }
+            if (window.evaluationCriteria && window.evaluationCriteria.length > 0) {
+                const criteria = window.evaluationCriteria;
+                for (let i = 0; i < criteria.length; i++) {
+                    const cMin = parseFloat(criteria[i].min) || 0;
+                    const cMax = parseFloat(criteria[i].max) || 0;
+                    if (percentVal >= cMin && percentVal <= cMax) {
+                        level = criteria[i].name;
+                        const col = criteria[i].color || 'red';
+                        color = `text-${col}-600 border-${col}-200`;
+                        break;
+                    }
+                }
+            } else {
+                if (percentVal >= 91) { level = "ยอดเยี่ยม"; color = "text-green-600 border-green-200"; }
+                else if (percentVal >= 81) { level = "ดีเลิศ"; color = "text-green-600 border-green-200"; }
+                else if (percentVal >= 71) { level = "ดี"; color = "text-blue-600 border-blue-200"; }
+                else if (percentVal >= 61) { level = "ปานกลาง"; color = "text-yellow-600 border-yellow-200"; }
+                else { level = "ควรพัฒนา"; color = "text-orange-600 border-orange-200"; }
+            }
 
             document.getElementById('display-total').innerText = sum;
-            document.getElementById('display-percent').innerText = percent;
+            document.getElementById('display-percent').innerText = percentVal.toFixed(2);
 
             const lvlEl = document.getElementById('display-level');
             lvlEl.innerText = level;
@@ -1258,12 +1295,25 @@ function saveConfigOriginal() {
                             paginationContainerId: 'reports-pagination',
                             pageSize: 10,
                             renderRow: (row) => {
+                                let percentVal = parseFloat(row.percent) || 0;
+                                let displayLevel = row.level;
+                                if (window.evaluationCriteria && window.evaluationCriteria.length > 0) {
+                                    const matched = window.evaluationCriteria.find(c => percentVal >= Number(c.min) && percentVal <= Number(c.max));
+                                    if (matched) displayLevel = matched.name;
+                                } else {
+                                    if (percentVal >= 91) displayLevel = "ยอดเยี่ยม";
+                                    else if (percentVal >= 81) displayLevel = "ดีเลิศ";
+                                    else if (percentVal >= 71) displayLevel = "ดี";
+                                    else if (percentVal >= 61) displayLevel = "ปานกลาง";
+                                    else if (percentVal > 0) displayLevel = "ควรพัฒนา";
+                                }
+
                                 let lvlColor = "text-gray-600 bg-gray-100";
-                                if (row.level === 'ดีมาก') lvlColor = "text-green-700 bg-green-100";
-                                else if (row.level === 'ดี') lvlColor = "text-blue-700 bg-blue-100";
-                                else if (row.level === 'ไม่ผ่าน') lvlColor = "text-red-700 bg-red-100";
-                                else if (row.level === 'พอใช้') lvlColor = "text-yellow-700 bg-yellow-100";
-                                else if (row.level === 'ควรปรับปรุง') lvlColor = "text-orange-700 bg-orange-100";
+                                if (displayLevel === 'ยอดเยี่ยม' || displayLevel === 'ดีมาก' || displayLevel === 'ดีเลิศ') lvlColor = "text-green-700 bg-green-100";
+                                else if (displayLevel === 'ดี') lvlColor = "text-blue-700 bg-blue-100";
+                                else if (displayLevel === 'ปานกลาง' || displayLevel === 'พอใช้') lvlColor = "text-yellow-700 bg-yellow-100";
+                                else if (displayLevel === 'ควรพัฒนา' || displayLevel === 'ควรปรับปรุง') lvlColor = "text-orange-700 bg-orange-100";
+                                else if (displayLevel === 'ไม่ผ่าน') lvlColor = "text-red-700 bg-red-100";
                                 
                                 let docBtns = `<a href="preview_report.html?id=${row.id}" target="_blank" class="inline-flex items-center justify-center bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700 transition shadow-sm" title="ดูรายงาน / พิมพ์ PDF"><i class="fas fa-print"></i></a>`;
                                 
@@ -1280,18 +1330,25 @@ function saveConfigOriginal() {
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 search-target">${row.teacher || '-'}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 search-target">${row.subject || '-'}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-school">${row.percent || '0'}%</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center"><span class="px-3 py-1 rounded-full text-xs font-bold ${lvlColor}">${row.level || '-'}</span></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center"><span class="px-3 py-1 rounded-full text-xs font-bold ${lvlColor}">${displayLevel || '-'}</span></td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-center">${docBtns}</td>
                                 </tr>
                                 `;
                             },
                             filter: (items) => {
                                 const input = document.getElementById('searchReports') ? document.getElementById('searchReports').value.toLowerCase() : '';
-                                return items.filter(row => 
-                                    (row.teacher && row.teacher.toLowerCase().includes(input)) ||
-                                    (row.subject && row.subject.toLowerCase().includes(input)) ||
-                                    (row.level && row.level.toLowerCase().includes(input))
-                                );
+                                return items.filter(row => {
+                                    let percentVal = parseFloat(row.percent) || 0;
+                                    let displayLevel = row.level;
+                                    if (window.evaluationCriteria && window.evaluationCriteria.length > 0) {
+                                        const matched = window.evaluationCriteria.find(c => percentVal >= Number(c.min) && percentVal <= Number(c.max));
+                                        if (matched) displayLevel = matched.name;
+                                    }
+                                    return (row.teacher && row.teacher.toLowerCase().includes(input)) ||
+                                           (row.subject && row.subject.toLowerCase().includes(input)) ||
+                                           (displayLevel && displayLevel.toLowerCase().includes(input)) ||
+                                           (row.level && row.level.toLowerCase().includes(input));
+                                });
                             }
                         });
                     }
@@ -2534,15 +2591,63 @@ function saveConfigOriginal() {
         
         // ================= Edit Form System =================
         let editSignTeacher, editSignObserver;
+        let originalSignTeacher = '', originalSignObserver = '';
         let editTotalMaxScore = 0;
 
+        function formatDateForInput(dateStr) {
+            if (!dateStr) return '';
+            let str = String(dateStr).trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+            const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})/);
+            if (isoMatch) return isoMatch[1];
+            const d = new Date(str);
+            if (isNaN(d.getTime())) return '';
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
         function initEditSignatures() {
-            if (editSignTeacher) return; // already init
             const eT = document.getElementById('editPadTeacher');
             const eO = document.getElementById('editPadObserver');
             if (eT && eO) {
-                editSignTeacher = new SignaturePad(eT, { backgroundColor: 'rgb(255, 255, 255)', penColor: 'rgb(30, 64, 175)' });
-                editSignObserver = new SignaturePad(eO, { backgroundColor: 'rgb(255, 255, 255)', penColor: 'rgb(30, 64, 175)' });
+                if (!editSignTeacher) {
+                    editSignTeacher = new SignaturePad(eT, { backgroundColor: 'rgb(255, 255, 255)', penColor: 'rgb(30, 64, 175)' });
+                }
+                if (!editSignObserver) {
+                    editSignObserver = new SignaturePad(eO, { backgroundColor: 'rgb(255, 255, 255)', penColor: 'rgb(30, 64, 175)' });
+                }
+            }
+        }
+
+        function loadSignatureToPad(pad, url) {
+            if (!pad) return;
+            pad.clear();
+            if (!url || typeof url !== 'string' || !url.trim()) return;
+
+            let canvas = pad._canvas || pad.canvas;
+            if (canvas && canvas.offsetWidth > 0 && canvas.offsetHeight > 0) {
+                if (canvas.width !== canvas.offsetWidth) canvas.width = canvas.offsetWidth;
+                if (canvas.height !== canvas.offsetHeight) canvas.height = canvas.offsetHeight;
+            }
+
+            if (url.startsWith('data:image')) {
+                try {
+                    pad.fromDataURL(url);
+                } catch (e) {
+                    console.error("fromDataURL signature pad error:", e);
+                }
+            } else if (url.startsWith('http')) {
+                const img = new Image();
+                img.onload = function () {
+                    if (canvas) {
+                        const ctx = canvas.getContext('2d');
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    }
+                };
+                img.src = url;
             }
         }
 
@@ -2590,25 +2695,34 @@ function saveConfigOriginal() {
         function calcEditScore() {
             const radios = document.querySelectorAll('#edit-eval-table-body input[type="radio"]:checked');
             let sum = 0;
-            radios.forEach(r => sum += parseInt(r.value));
+            radios.forEach(r => sum += parseInt(r.value, 10));
 
-            const max = parseInt(document.getElementById('edit-display-max').innerText) || 1;
-            const percent = ((sum / max) * 100).toFixed(2);
+            const max = parseInt(document.getElementById('edit-display-max').innerText, 10) || 1;
+            const percentVal = parseFloat(((sum / max) * 100).toFixed(2));
 
             let level = "ไม่ผ่าน", color = "text-red-600 border-red-200";
-            if(window.evaluationCriteria && window.evaluationCriteria.length > 0) {
+            if (window.evaluationCriteria && window.evaluationCriteria.length > 0) {
                 const criteria = window.evaluationCriteria;
                 for (let i = 0; i < criteria.length; i++) {
-                    if (percent >= criteria[i].min && percent <= criteria[i].max) {
+                    const cMin = parseFloat(criteria[i].min) || 0;
+                    const cMax = parseFloat(criteria[i].max) || 0;
+                    if (percentVal >= cMin && percentVal <= cMax) {
                         level = criteria[i].name;
-                        color = `text-${criteria[i].color}-600 border-${criteria[i].color}-200`;
+                        const col = criteria[i].color || 'red';
+                        color = `text-${col}-600 border-${col}-200`;
                         break;
                     }
                 }
+            } else {
+                if (percentVal >= 91) { level = "ยอดเยี่ยม"; color = "text-green-600 border-green-200"; }
+                else if (percentVal >= 81) { level = "ดีเลิศ"; color = "text-green-600 border-green-200"; }
+                else if (percentVal >= 71) { level = "ดี"; color = "text-blue-600 border-blue-200"; }
+                else if (percentVal >= 61) { level = "ปานกลาง"; color = "text-yellow-600 border-yellow-200"; }
+                else { level = "ควรพัฒนา"; color = "text-orange-600 border-orange-200"; }
             }
 
             document.getElementById('edit-display-total').innerText = sum;
-            document.getElementById('edit-display-percent').innerText = percent;
+            document.getElementById('edit-display-percent').innerText = percentVal.toFixed(2);
 
             const lvlEl = document.getElementById('edit-display-level');
             lvlEl.innerText = level;
@@ -2637,8 +2751,23 @@ function saveConfigOriginal() {
             const f3 = await getBase64('ef_file3');
             const f4 = await getBase64('ef_file4');
 
-            const stData = editSignTeacher.isEmpty() ? "" : editSignTeacher.toDataURL();
-            const soData = editSignObserver.isEmpty() ? "" : editSignObserver.toDataURL();
+            let stData = originalSignTeacher || "";
+            if (editSignTeacher && !editSignTeacher.isEmpty()) {
+                try {
+                    stData = editSignTeacher.toDataURL();
+                } catch(err) {
+                    stData = originalSignTeacher || "";
+                }
+            }
+
+            let soData = originalSignObserver || "";
+            if (editSignObserver && !editSignObserver.isEmpty()) {
+                try {
+                    soData = editSignObserver.toDataURL();
+                } catch(err) {
+                    soData = originalSignObserver || "";
+                }
+            }
 
             const formData = {
                 id: editModeId,
@@ -2734,12 +2863,41 @@ function saveConfigOriginal() {
 
         function editReport(id) {
             editModeId = id;
-            Swal.fire({
-                title: 'กำลังดึงข้อมูล...',
-                allowOutsideClick: false,
-                didOpen: () => Swal.showLoading()
-            });
 
+            // 1. Immediately switch view to edit form for instant responsiveness
+            switchView('edit_form');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            // 2. Show skeleton loading placeholders in table & submit button
+            const tbody = document.getElementById('edit-eval-table-body');
+            if (tbody && typeof getSkeletonRows === 'function') {
+                tbody.innerHTML = getSkeletonRows(7, 5);
+            }
+            document.getElementById('edit-display-max').innerText = '0';
+            document.getElementById('edit-display-total').innerText = '0';
+            document.getElementById('edit-display-percent').innerText = '0.00';
+            document.getElementById('edit-display-level').innerText = '-';
+
+            const submitBtn = document.querySelector('#editEvalForm button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> กำลังดึงข้อมูล...';
+            }
+
+            // 3. Reset preview images and signatures while loading
+            for (let i = 1; i <= 4; i++) {
+                const previewImg = document.getElementById('edit-preview' + i);
+                const previewContainer = document.getElementById('edit-previewContainer' + i);
+                if (previewImg) previewImg.src = '';
+                if (previewContainer) previewContainer.classList.add('hidden');
+            }
+            originalSignTeacher = '';
+            originalSignObserver = '';
+            initEditSignatures();
+            if (editSignTeacher) editSignTeacher.clear();
+            if (editSignObserver) editSignObserver.clear();
+
+            // 4. Fetch data asynchronously in background
             Promise.all([
                 fetch('../api/user.php?action=list').then(r => r.json()),
                 fetch(`../api/api.php?action=getReportById&id=${id}`).then(r => r.json())
@@ -2748,7 +2906,6 @@ function saveConfigOriginal() {
                     formTeachersList = teachersRes.data;
                     const data = reportRes.data;
                     
-                    // Find teacher template ID
                     const tInfo = formTeachersList.find(x => x.id == data.teacher_id || x.display_name === data.teacher || x.username === data.teacher);
                     const templateId = tInfo ? tInfo.template_id : null;
                     
@@ -2760,8 +2917,6 @@ function saveConfigOriginal() {
                     }
                     
                     configPromise.then(configRes => {
-                        Swal.close();
-                        
                         // Parse template config
                         if (templateId) {
                             if (configRes.success) {
@@ -2780,17 +2935,12 @@ function saveConfigOriginal() {
                             }
                         }
                         
-                        // Render and switch view
-                        initEditSignatures();
                         renderEditEvalTable();
                         
-                        switchView('edit_form');
+                        document.getElementById('ef_occurrence').value = data.occurrence || '';
+                        document.getElementById('ef_term').value = data.term || '';
+                        document.getElementById('ef_year').value = data.year || '';
                         
-                        document.getElementById('ef_occurrence').value = data.occurrence;
-                        document.getElementById('ef_term').value = data.term;
-                        document.getElementById('ef_year').value = data.year;
-                        
-                        // Populate teachers for edit form
                         const select = document.getElementById('ef_teacher');
                         if (select) {
                             select.innerHTML = '<option value="">-- กรุณาเลือกครู --</option>';
@@ -2807,22 +2957,21 @@ function saveConfigOriginal() {
                         }
 
                         setSelectValueSafely('ef_department', data.department);
-                        document.getElementById('ef_subject').value = data.subject;
-                        document.getElementById('ef_class').value = data.class;
-                        document.getElementById('ef_date').value = data.date;
-                        document.getElementById('ef_time').value = data.time;
-                        document.getElementById('ef_observer').value = data.observer;
-                        document.getElementById('ef_teacher_pos').value = data.teacher_position;
-                        document.getElementById('ef_observer_pos').value = data.observer_position;
+                        document.getElementById('ef_subject').value = data.subject || '';
+                        document.getElementById('ef_class').value = data.class || '';
+                        document.getElementById('ef_date').value = formatDateForInput(data.date);
+                        document.getElementById('ef_time').value = data.time || '';
+                        document.getElementById('ef_observer').value = data.observer || '';
+                        document.getElementById('ef_teacher_pos').value = data.teacher_position || '';
+                        document.getElementById('ef_observer_pos').value = data.observer_position || '';
                         
-                        document.getElementById('ef_strengths').value = data.strengths;
-                        document.getElementById('ef_improvements').value = data.improvements;
-                        document.getElementById('ef_suggestions').value = data.suggestions;
+                        document.getElementById('ef_strengths').value = data.strengths || '';
+                        document.getElementById('ef_improvements').value = data.improvements || '';
+                        document.getElementById('ef_suggestions').value = data.suggestions || '';
 
                         let scoresRaw = data.scores_json || data.scores || '{}';
                         if (typeof scoresRaw === 'object') scoresRaw = JSON.stringify(scoresRaw);
                         const scores = JSON.parse(scoresRaw) || {};
-                        // Fallback map for older seeded records (prepare, media, etc.)
                         const oldKeyMap = {
                             'prepare': 'item_prep_1',
                             'media': 'item_prep_3',
@@ -2838,16 +2987,19 @@ function saveConfigOriginal() {
                             if(radio) radio.checked = true;
                         }
                         
-                        if (data.sign_teacher) editSignTeacher.fromDataURL(data.sign_teacher);
-                        if (data.sign_observer) editSignObserver.fromDataURL(data.sign_observer);
+                        originalSignTeacher = data.sign_teacher || data.signTeacher || data.sign_teacher_url || data.teacher_signature || '';
+                        originalSignObserver = data.sign_observer || data.signObserver || data.sign_observer_url || data.observer_signature || '';
+
+                        loadSignatureToPad(editSignTeacher, originalSignTeacher);
+                        loadSignatureToPad(editSignObserver, originalSignObserver);
 
                         for (let i = 1; i <= 4; i++) {
-                            const fileUrl = data['file_url' + i];
+                            const fileUrl = data['file_url' + i] || data['fileUrl' + i] || data['attached_file_' + i];
                             const previewImg = document.getElementById('edit-preview' + i);
                             const previewContainer = document.getElementById('edit-previewContainer' + i);
                             if (fileUrl && previewImg && previewContainer) {
                                 let srcPath = fileUrl;
-                                if (!srcPath.startsWith('http') && !srcPath.startsWith('../') && !srcPath.startsWith('/')) {
+                                if (!srcPath.startsWith('http') && !srcPath.startsWith('../') && !srcPath.startsWith('/') && !srcPath.startsWith('data:')) {
                                     srcPath = '../' + srcPath;
                                 }
                                 previewImg.src = srcPath;
@@ -2859,14 +3011,26 @@ function saveConfigOriginal() {
                         }
 
                         calcEditScore();
+
+                        // Restore submit button
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i> บันทึกข้อมูลและส่งเข้าระบบ';
+                        }
                     });
                 } else {
-                    Swal.close();
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i> บันทึกข้อมูลและส่งเข้าระบบ';
+                    }
                     Swal.fire('ผิดพลาด', 'ไม่สามารถโหลดข้อมูลเพื่อแก้ไขได้', 'error');
                 }
             }).catch(err => {
-                Swal.close();
-                Swal.fire('ผิดพลาด', 'เกิดข้อผิดพลาดในการโหลดข้อมูล: ' . err.message, 'error');
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i> บันทึกข้อมูลและส่งเข้าระบบ';
+                }
+                Swal.fire('ผิดพลาด', 'เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + err.message, 'error');
                 console.error(err);
             });
         }

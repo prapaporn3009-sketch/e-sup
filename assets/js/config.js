@@ -75,9 +75,31 @@ async function callGAS(action, options = {}) {
         throw new Error("ยังไม่ได้ตั้งค่าคีย์หลังบ้าน GAS_API_URL ในไฟล์ assets/js/config.js");
     }
 
+    // ล้าง Client Cache หากเป็นการบันทึกข้อมูล
+    if (['saveSettings', 'saveConfig', 'createTerm', 'setTermActive', 'deleteTerm'].includes(action)) {
+        try {
+            sessionStorage.removeItem('gas_cache_getSettings');
+            sessionStorage.removeItem('gas_cache_listTerms');
+            sessionStorage.removeItem('gas_cache_getActiveTerm');
+        } catch (e) { }
+    }
+
+    // ใช้งาน Client-side sessionStorage Cache สำหรับข้อมูลการตั้งค่าและภาคเรียน
+    const cacheableActions = ['getSettings', 'listTerms', 'getActiveTerm'];
+    if (!options.method || options.method.toUpperCase() === 'GET') {
+        if (cacheableActions.includes(action) && !options.skipCache && typeof sessionStorage !== 'undefined') {
+            const cachedData = sessionStorage.getItem('gas_cache_' + action);
+            if (cachedData) {
+                try {
+                    return JSON.parse(cachedData);
+                } catch (e) { }
+            }
+        }
+    }
+
     const clientIp = (typeof sessionStorage !== 'undefined') ? (sessionStorage.getItem('client_ip') || 'GAS_API') : 'GAS_API';
     const userAgent = (typeof navigator !== 'undefined') ? navigator.userAgent : 'NodeJS Subagent';
-    
+
     // ดึงเซสชันโทเค็นปัจจุบันของผู้ใช้ล็อกอิน (ถ้ามี)
     let sessionToken = '';
     const sessionStr = localStorage.getItem('user_session');
@@ -87,7 +109,7 @@ async function callGAS(action, options = {}) {
             if (sessionObj && sessionObj.session_token) {
                 sessionToken = sessionObj.session_token;
             }
-        } catch (e) {}
+        } catch (e) { }
     }
 
     const url = `${GAS_API_URL}?action=${action}&session_token=${encodeURIComponent(sessionToken)}&client_ip=${encodeURIComponent(clientIp)}&user_agent=${encodeURIComponent(userAgent)}`;
@@ -100,7 +122,9 @@ async function callGAS(action, options = {}) {
         headers: {
             ...defaultHeaders,
             ...options.headers
-        }
+        },
+        redirect: 'follow',
+        credentials: 'omit'
     };
 
     if (options.body) {
@@ -112,7 +136,20 @@ async function callGAS(action, options = {}) {
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        return await response.json();
+        const resText = await response.text();
+        let resJson = null;
+        try {
+            resJson = JSON.parse(resText);
+        } catch (e) {
+            console.warn(`[callGAS] ตอบกลับจาก API (action=${action}) ไม่ใช่ JSON:`, resText.substring(0, 120));
+            return { success: false, message: `ข้อมูลตอบกลับจาก API ไม่ใช่ JSON ที่ถูกต้อง` };
+        }
+        if (resJson && resJson.success && cacheableActions.includes(action) && typeof sessionStorage !== 'undefined') {
+            try {
+                sessionStorage.setItem('gas_cache_' + action, JSON.stringify(resJson));
+            } catch (e) { }
+        }
+        return resJson;
     } catch (err) {
         console.error(`เกิดข้อผิดพลาดในการเรียกใช้ API: action=${action}`, err);
         throw err;
@@ -122,13 +159,17 @@ async function callGAS(action, options = {}) {
 // === ตัวดักฟังการเชื่อมต่อแบบสากลเพื่อปรับปรุงรูปแบบลิงก์รูปภาพ Google Drive ===
 if (typeof window !== 'undefined') {
     const originalFetch = window.fetch;
-    window.fetch = function() {
+    window.fetch = function () {
         let [resource, config] = arguments;
-        if (typeof resource === 'string' && (resource.startsWith(GAS_API_URL) || resource.includes('script.google.com'))) {
+        if (typeof resource === 'string' && (resource.includes('script.google.com') || (GAS_API_URL && resource.startsWith(GAS_API_URL)))) {
+            if (!config) config = {};
+            if (!config.credentials) config.credentials = 'omit';
+
             return originalFetch(resource, config).then(response => {
                 if (response.ok) {
-                    return response.text().then(text => {
-                        if (text.includes('lh3.googleusercontent.com')) {
+                    const clone = response.clone();
+                    return clone.text().then(text => {
+                        if (text && text.includes('lh3.googleusercontent.com/d/')) {
                             const correctedText = text.replace(/https:\/\/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/g, 'https://drive.google.com/thumbnail?id=$1&sz=w1000');
                             return new Response(correctedText, {
                                 status: response.status,
@@ -136,14 +177,12 @@ if (typeof window !== 'undefined') {
                                 headers: response.headers
                             });
                         }
-                        return new Response(text, {
-                            status: response.status,
-                            statusText: response.statusText,
-                            headers: response.headers
-                        });
-                    });
+                        return response;
+                    }).catch(() => response);
                 }
                 return response;
+            }).catch(err => {
+                return originalFetch(resource, config);
             });
         }
         return originalFetch(resource, config);

@@ -106,14 +106,14 @@
                 let evaluationCriteria = globalSettings.evaluation_criteria || [];
                 if (evaluationCriteria.length === 0) {
                     evaluationCriteria = [
-                        { name: "ดีมาก", min: 91, max: 100 },
-                        { name: "ดี", min: 81, max: 90 },
-                        { name: "พอใช้", min: 71, max: 80 },
-                        { name: "ควรปรับปรุง", min: 61, max: 70 },
-                        { name: "ไม่ผ่าน", min: 0, max: 60 }
+                        { name: "ยอดเยี่ยม", min: 91, max: 100 },
+                        { name: "ดีเลิศ", min: 81, max: 90 },
+                        { name: "ดี", min: 71, max: 80 },
+                        { name: "ปานกลาง", min: 61, max: 70 },
+                        { name: "ควรพัฒนา", min: 0, max: 60 }
                     ];
                 }
-                evaluationCriteria.sort((a, b) => b.min - a.min);
+                evaluationCriteria.sort((a, b) => Number(b.min) - Number(a.min));
 
                 // 3. จัดการเรนเดอร์เอกสารลงหน้าระดาษ A4
                 const docContainer = document.getElementById('document-container');
