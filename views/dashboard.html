@@ -972,18 +972,32 @@
         function loadConfig() {
             const tbody = document.getElementById('eval-table-body');
             if (tbody && typeof getSkeletonRows === 'function') tbody.innerHTML = getSkeletonRows(7, 5);
-            fetch('../api/api.php?action=getConfig')
-                .then(response => {
-                    if (!response.ok) throw new Error('เกิดข้อผิดพลาดในการโหลดการตั้งค่า');
-                    return response.json();
-                })
+            
+            // โหลดเทมเพลตเริ่มต้น (Template 1 หรือ Template แรกที่มีในระบบ)
+            fetch('../api/templates.php?action=list')
+                .then(r => r.json())
                 .then(res => {
-                    configData = res;
-                    if (!configData.items || configData.items.length === 0) {
-                        configData.items = [
+                    let firstTmplId = 1;
+                    if (res && res.success && res.templates && res.templates.length > 0) {
+                        firstTmplId = res.templates[0].id;
+                    }
+                    return fetch('../api/templates.php?action=get&id=' + firstTmplId);
+                })
+                .then(r => r.json())
+                .then(res => {
+                    if (res && res.success && res.template) {
+                        try {
+                            configData = JSON.parse(res.template.items_json);
+                            if (typeof configData === 'string') configData = JSON.parse(configData);
+                        } catch(e) {
+                            configData = { items: [] };
+                        }
+                    }
+                    if (!configData || !configData.items || configData.items.length === 0) {
+                        configData = { items: [
                             { id: generateId(), type: 'main', text: 'ด้านการเตรียมการสอน' },
                             { id: generateId(), type: 'sub', text: 'มีแผนการจัดการเรียนรู้ที่สอดคล้องกับตัวชี้วัด' }
-                        ];
+                        ]};
                     }
                     // ถ้าเปิดหน้า config อยู่ให้โหลดใหม่
                     const vSet = document.getElementById('view-settings');
@@ -996,7 +1010,9 @@
                         renderEvalTable();
                     }
                 })
-                .catch(err => console.error("โหลดการตั้งค่าล้มเหลว:", err));
+                .catch(err => {
+                    console.error("โหลดการตั้งค่าล้มเหลว:", err);
+                });
         }
 
         function generateId() { return 'item_' + Math.random().toString(36).substr(2, 9); }
@@ -1020,7 +1036,7 @@
                         <div class="cursor-move text-gray-300 mr-3"><i class="fas fa-grip-vertical"></i></div>
                         ${icon}
                         <input type="text" class="flex-grow border-b border-gray-200 focus:outline-none focus:border-school bg-transparent px-2 py-1 ${isMain ? 'font-bold text-school' : 'text-gray-700'}" 
-                               value="${item.text}" onchange="updateConfigText('${item.id}', this.value)" placeholder="${isMain ? 'ระบุหัวข้อหลัก' : 'ระบุหัวข้อย่อย'}">
+                               value="${item.text}" oninput="updateConfigText('${item.id}', this.value)" onchange="updateConfigText('${item.id}', this.value)" placeholder="${isMain ? 'ระบุหัวข้อหลัก' : 'ระบุหัวข้อย่อย'}">
                         <button onclick="removeConfigItem('${item.id}')" class="text-red-400 hover:text-red-600 ml-4 transition"><i class="fas fa-trash"></i></button>
                     </div>
                 `;
@@ -1999,6 +2015,20 @@ function saveConfigOriginal() {
                 return;
             }
 
+            // ซิงค์ข้อความล่าสุดจาก DOM input ทุกช่องเข้า configData ก่อนส่ง
+            const container = document.getElementById('config-container');
+            if (container && configData && configData.items) {
+                const inputs = container.querySelectorAll('input[type="text"]');
+                inputs.forEach(inp => {
+                    const row = inp.closest('[data-id]');
+                    if (row) {
+                        const itemId = row.getAttribute('data-id');
+                        const item = configData.items.find(i => String(i.id) === String(itemId));
+                        if (item) item.text = inp.value;
+                    }
+                });
+            }
+
             Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
             
             let itemsArr = [];
@@ -2021,6 +2051,10 @@ function saveConfigOriginal() {
             .then(res => res.json())
             .then(res => {
                 if (res.success) {
+                    // ล้างแคช API ในฝั่ง Client
+                    Object.keys(sessionStorage).forEach(key => { if (key.startsWith('gas_cache_')) sessionStorage.removeItem(key); });
+                    Object.keys(localStorage).forEach(key => { if (key.startsWith('gas_cache_')) localStorage.removeItem(key); });
+
                     Swal.fire('สำเร็จ', res.message, 'success').then(() => {
                         closeTemplateEditor();
                         loadSettingsTemplatesList();

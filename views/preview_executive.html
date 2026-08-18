@@ -225,11 +225,10 @@
                 `ประจำปีการศึกษา ${year === 'all' ? 'ทั้งหมด' : year}  ภาคเรียนที่ ${term === 'all' ? 'ทั้งหมด' : term}`;
 
             // Load Settings (School Name & Logo)
-            if (GAS_API_URL) {
-                fetch(GAS_API_URL + '?action=getSettings')
-                    .then(res => res.json())
+            if (typeof callGAS === 'function') {
+                callGAS('getSettings')
                     .then(res => {
-                        if (res.success && res.data) {
+                        if (res && res.success && res.data) {
                             if (res.data.school_name) {
                                 document.getElementById('exec-school-name').textContent = res.data.school_name;
                                 document.title = "รายงานสรุปผู้บริหาร - " + res.data.school_name;
@@ -240,7 +239,7 @@
                                 logoImg.classList.remove('hidden');
                             }
                         }
-                    }).catch(e => console.error(e));
+                    }).catch(e => console.warn(e));
             }
 
             // Load Report Analytics Data

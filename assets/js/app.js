@@ -327,25 +327,40 @@ class TablePaginator {
 
         // ================= Config System =================
         function loadConfig() {
-            fetch('../api/api.php?action=getConfig')
-                .then(response => {
-                    if (!response.ok) throw new Error('เกิดข้อผิดพลาดในการโหลดการตั้งค่า');
-                    return response.json();
-                })
+            const tbody = document.getElementById('eval-table-body');
+            if (tbody && typeof getSkeletonRows === 'function') tbody.innerHTML = getSkeletonRows(7, 5);
+
+            fetch('../api/templates.php?action=list')
+                .then(r => r.json())
                 .then(res => {
-                    configData = res;
-                    if (!configData.items || configData.items.length === 0) {
-                        configData.items = [
+                    let firstTmplId = 1;
+                    if (res && res.success && res.templates && res.templates.length > 0) {
+                        firstTmplId = res.templates[0].id;
+                    }
+                    return fetch('../api/templates.php?action=get&id=' + firstTmplId);
+                })
+                .then(r => r.json())
+                .then(res => {
+                    if (res && res.success && res.template) {
+                        try {
+                            configData = JSON.parse(res.template.items_json);
+                            if (typeof configData === 'string') configData = JSON.parse(configData);
+                        } catch(e) {
+                            configData = { items: [] };
+                        }
+                    }
+                    if (!configData || !configData.items || configData.items.length === 0) {
+                        configData = { items: [
                             { id: generateId(), type: 'main', text: 'ด้านการเตรียมการสอน' },
                             { id: generateId(), type: 'sub', text: 'มีแผนการจัดการเรียนรู้ที่สอดคล้องกับตัวชี้วัด' }
-                        ];
+                        ]};
                     }
-                    // ถ้าเปิดหน้า config อยู่ให้โหลดใหม่
-                    if (!document.getElementById('view-config').classList.contains('view-hidden')) {
+                    const cfgView = document.getElementById('view-config');
+                    if (cfgView && !cfgView.classList.contains('view-hidden')) {
                         renderConfigEditor();
                     }
-                    // ถ้าเปิดหน้า form อยู่ ให้เรนเดอร์ตารางใหม่ด้วย
-                    if (!document.getElementById('view-form').classList.contains('view-hidden')) {
+                    const frmView = document.getElementById('view-form');
+                    if (frmView && !frmView.classList.contains('view-hidden')) {
                         renderEvalTable();
                     }
                 })
@@ -1287,22 +1302,48 @@ function saveConfigOriginal() {
                 return;
             }
 
+            // ซิงค์ข้อความล่าสุดจาก DOM input ทุกช่องเข้า configData ก่อนส่ง
+            const container = document.getElementById('config-container');
+            if (container && configData && configData.items) {
+                const inputs = container.querySelectorAll('input[type="text"]');
+                inputs.forEach(inp => {
+                    const row = inp.closest('[data-id]');
+                    if (row) {
+                        const itemId = row.getAttribute('data-id');
+                        const item = configData.items.find(i => String(i.id) === String(itemId));
+                        if (item) item.text = inp.value;
+                    }
+                });
+            }
+
             Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
             
+            let itemsArr = [];
+            if (configData && Array.isArray(configData.items)) {
+                itemsArr = configData.items;
+            } else if (Array.isArray(configData)) {
+                itemsArr = configData;
+            }
+
             fetch('../api/templates.php?action=save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     id: id,
                     name: name,
+                    items: itemsArr,
                     items_json: JSON.stringify(configData)
                 })
             })
             .then(res => res.json())
             .then(res => {
                 if (res.success) {
+                    Object.keys(sessionStorage).forEach(key => { if (key.startsWith('gas_cache_')) sessionStorage.removeItem(key); });
+                    Object.keys(localStorage).forEach(key => { if (key.startsWith('gas_cache_')) localStorage.removeItem(key); });
+
                     Swal.fire('สำเร็จ', res.message, 'success').then(() => {
                         closeTemplateEditor();
+                        loadSettingsTemplatesList();
                     });
                 } else {
                     Swal.fire('ข้อผิดพลาด', res.message, 'error');

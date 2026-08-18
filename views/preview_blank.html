@@ -119,7 +119,7 @@
                 const docContainer = document.getElementById('document-container');
                 let pagesHtml = '';
 
-                // แบ่งคำถามหน้าแรก 15 ข้อ และหน้าที่ 2 ส่วนที่เหลือ
+                // แบ่งคำถามหน้าแรก 10 ข้อ และหน้าที่ 2 ส่วนที่เหลือ
                 let firstPageItems = [];
                 let secondPageItems = [];
                 let itemIndex = 0;
@@ -129,7 +129,7 @@
                     if (it.type !== 'main') {
                         itemIndex++;
                     }
-                    if (itemIndex <= 15) {
+                    if (itemIndex <= 10) {
                         firstPageItems.push(it);
                     } else {
                         secondPageItems.push(it);
@@ -138,6 +138,28 @@
 
                 const hasPage2Table = secondPageItems.length > 0;
 
+                // จัดการหัวเรื่องแบบประเมิน
+                let reportTitle = 'แบบนิเทศการสอน';
+                if (templateName) {
+                    let cleanTName = String(templateName).trim();
+                    if (cleanTName.startsWith('แบบนิเทศ')) {
+                        reportTitle = cleanTName;
+                    } else {
+                        if (cleanTName.startsWith('(') && cleanTName.endsWith(')')) {
+                            reportTitle = `แบบนิเทศการสอน ${cleanTName}`;
+                        } else {
+                            reportTitle = `แบบนิเทศการสอน (${cleanTName})`;
+                        }
+                    }
+                }
+
+                let firstCategoryTitleHtml = '';
+                let displayFirstPageItems = [...firstPageItems];
+                if (displayFirstPageItems.length > 0 && displayFirstPageItems[0].type === 'main') {
+                    firstCategoryTitleHtml = `<div class="font-bold" style="font-size: 11pt; margin-top: 6px; margin-bottom: 2px;">${displayFirstPageItems[0].text}</div>`;
+                    displayFirstPageItems.shift();
+                }
+
                 // --- สร้างหน้าที่ 1 ---
                 pagesHtml += `
                 <div class="page">
@@ -145,52 +167,91 @@
                         ${schoolLogo ? `<img src="${schoolLogo}" alt="Logo">` : '<div style="height:60px; width:60px; border-radius:50%; border:2px solid #000; display:inline-block; line-height:60px; font-weight:bold; font-size:12px;">LOGO</div>'}
                     </div>
                     
-                    <h2 class="text-center font-bold mb-6" style="font-size: 10pt;">แบบบันทึกการนิเทศภายใน${templateName}<br>${schoolName}</h2>
-                    
-                    <div class="text-center mb-4" style="font-size: 10pt;">
-                        ครั้งที่ <span class="dotted" style="width: 50px;"></span> / <span class="dotted" style="width: 50px;"></span>
+                    <div class="text-center font-bold mb-3" style="line-height: 1.35;">
+                        <div style="font-size: 13pt;">${reportTitle}</div>
+                        <div style="font-size: 11.5pt;">ภาคเรียนที่ <span class="dotted-field" style="width: 40px;"></span> &nbsp;ปีการศึกษา <span class="dotted-field" style="width: 70px;"></span></div>
+                        <div style="font-size: 11.5pt;">${schoolName}</div>
                     </div>
                     
-                    <table class="info-table">
-                        <tr>
-                            <td width="60%">ผู้รับการนิเทศ <span class="dotted" style="width: 250px;"></span></td>
-                            <td width="40%">ชั้น <span class="dotted" style="width: 150px;"></span></td>
-                        </tr>
-                        <tr>
-                            <td>กลุ่มสาระฯ <span class="dotted" style="width: 240px;"></span></td>
-                            <td>วิชา <span class="dotted" style="width: 150px;"></span></td>
-                        </tr>
-                        <tr>
-                            <td>วันที่ <span class="dotted" style="width: 280px;"></span></td>
-                            <td>เวลา <span class="dotted" style="width: 170px;"></span></td>
-                        </tr>
-                    </table>
-                    
-                    <hr style="border-top: 2px solid #000; margin-bottom: 8px;">
-                    
-                    <p style="font-size: 11pt; font-weight: bold; margin-bottom: 5px;">
-                        คำชี้แจง <span style="font-weight: normal;">กรุณาเขียนเครื่องหมาย ✓ ในช่องระดับคะแนน เพื่อแสดงผลการประเมินพฤติกรรมการสอนของครู</span><br>
-                        เกณฑ์ระดับคะแนน <span style="font-weight: normal;">5 = ยอดเยี่ยม &nbsp; 4 = ดีเลิศ &nbsp; 3 = ดี &nbsp; 2 = ปานกลาง &nbsp; 1 = ควรพัฒนา</span>
-                    </p>
+                    <div style="font-size: 10.5pt; line-height: 1.45; text-align: justify; margin-bottom: 6px;">
+                        <strong>คำชี้แจง</strong>&nbsp;&nbsp;แบบนิเทศการสอนภายในนี้ เป็นแบบนิเทศการสอนของครูแต่ละรายวิชาที่สอน โดย ผู้บริหารหรือผู้นิเทศ และบันทึกข้อมูลจากการเยี่ยมชั้นเรียน โดยทำเครื่องหมาย ✓ ลงในแบบประเมินทุกรายการ
+                    </div>
+
+                    <div style="font-size: 10.5pt; line-height: 1.45; margin-bottom: 6px;">
+                        <div class="font-bold mb-1">ตอนที่ ๑ &nbsp;ข้อมูลทั่วไป</div>
+                        <div style="padding-left: 20px; display: flex; flex-direction: column; gap: 3px;">
+                            <div style="display: flex; align-items: baseline;">
+                                <span style="white-space: nowrap;">๑. ผู้รับการนิเทศ (ชื่อ-นามสกุล)</span>
+                                <span class="dotted-field" style="flex: 1; padding-left: 8px;"></span>
+                            </div>
+                            <div style="display: flex; align-items: baseline;">
+                                <span style="white-space: nowrap;">๒. กลุ่มสาระการเรียนรู้</span>
+                                <span class="dotted-field" style="flex: 1.2; padding-left: 8px;"></span>
+                                <span style="white-space: nowrap; margin-left: 15px;">รายวิชา</span>
+                                <span class="dotted-field" style="flex: 1.2; padding-left: 8px;"></span>
+                            </div>
+                            <div style="display: flex; align-items: baseline; padding-left: 18px;">
+                                <span style="white-space: nowrap;">เรื่องที่สอน</span>
+                                <span class="dotted-field" style="flex: 1.5; padding-left: 8px;"></span>
+                                <span style="white-space: nowrap; margin-left: 15px;">ระดับ(ชั้น/ห้อง)ที่สอน</span>
+                                <span class="dotted-field" style="flex: 1; padding-left: 8px;"></span>
+                            </div>
+                            <div style="display: flex; align-items: baseline; padding-left: 18px;">
+                                <span style="white-space: nowrap;">วันที่</span>
+                                <span class="dotted-field" style="min-width: 35px; width: 45px; text-align: center;"></span>
+                                <span style="white-space: nowrap; margin-left: 6px;">เดือน</span>
+                                <span class="dotted-field" style="min-width: 90px; width: 130px; text-align: center;"></span>
+                                <span style="white-space: nowrap; margin-left: 6px;">พ.ศ.</span>
+                                <span class="dotted-field" style="min-width: 55px; width: 70px; text-align: center;"></span>
+                                <span style="white-space: nowrap; margin-left: 10px;">คาบที่</span>
+                                <span class="dotted-field" style="min-width: 40px; width: 55px; text-align: center;"></span>
+                                <span style="white-space: nowrap; margin-left: 10px;">เวลา</span>
+                                <span class="dotted-field" style="flex: 1; text-align: center;"></span>
+                            </div>
+                            <div style="display: flex; align-items: baseline;">
+                                <span style="white-space: nowrap;">๓. ผู้นิเทศ (ชื่อ-นามสกุล)</span>
+                                <span class="dotted-field" style="flex: 1; padding-left: 8px;"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="font-size: 10.5pt; line-height: 1.45; margin-bottom: 4px;">
+                        <div class="font-bold mb-1">ตอนที่ ๒ &nbsp;การนิเทศชั้นเรียน</div>
+                        <div style="padding-left: 28px; margin-bottom: 4px;">
+                            <div style="display: inline-block; vertical-align: top; margin-right: 15px;">เกณฑ์การให้คะแนน</div>
+                            <div style="display: inline-block; vertical-align: top;">
+                                <div style="display: flex; gap: 20px;">
+                                    <span>ดีมาก = ๕</span>
+                                    <span>ดี = ๔</span>
+                                    <span>ปานกลาง = ๓</span>
+                                </div>
+                                <div style="display: flex; gap: 20px; margin-top: 2px;">
+                                    <span>พอใช้ = ๒</span>
+                                    <span>ควรปรับปรุง = ๑</span>
+                                </div>
+                            </div>
+                        </div>
+                        ${firstCategoryTitleHtml}
+                    </div>
                     
                     <table class="main-table">
                         <thead>
                             <tr>
-                                <th width="8%" rowspan="2">ที่</th>
-                                <th width="62%" rowspan="2">หัวข้อการประเมิน</th>
-                                <th width="20%" colspan="5">ระดับการประเมิน</th>
-                                <th width="10%" rowspan="2">หมายเหตุ</th>
+                                <th width="6%" rowspan="2" style="text-align: center; vertical-align: middle;">ที่</th>
+                                <th width="54%" rowspan="2" style="text-align: center; vertical-align: middle;">รายการ</th>
+                                <th width="28%" colspan="5" style="text-align: center; vertical-align: middle;">ระดับการปฏิบัติ</th>
+                                <th width="12%" rowspan="2" style="text-align: center; vertical-align: middle;">หมายเหตุ</th>
                             </tr>
                             <tr>
-                                <th width="4%">5</th>
-                                <th width="4%">4</th>
-                                <th width="4%">3</th>
-                                <th width="4%">2</th>
-                                <th width="4%">1</th>
+                                <th width="5.6%" style="text-align: center;">๕</th>
+                                <th width="5.6%" style="text-align: center;">๔</th>
+                                <th width="5.6%" style="text-align: center;">๓</th>
+                                <th width="5.6%" style="text-align: center;">๒</th>
+                                <th width="5.6%" style="text-align: center;">๑</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${renderTableRows(firstPageItems, 0)}
+                            ${renderTableRows(displayFirstPageItems, 0)}
                             ${!hasPage2Table ? `
                             <tr>
                                 <td colspan="2" class="text-center font-bold">รวม</td>
@@ -209,11 +270,11 @@
                     </table>
 
                     ${!hasPage2Table ? `
-                    <div style="font-size: 11pt; margin-top: 30px; margin-left: 20px;">
-                        <p class="font-bold mb-4">สรุปผลการนิเทศ ตามเกณฑ์</p>
-                        <div style="margin-left: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px;">
+                    <div style="font-size: 10.5pt; margin-top: 20px; margin-left: 15px;">
+                        <p class="font-bold mb-3">สรุปผลการนิเทศ ตามเกณฑ์</p>
+                        <div style="margin-left: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px;">
                             ${evaluationCriteria.map(c => `
-                                <div class="mb-2">
+                                <div class="mb-1">
                                     <span class="checkbox"></span> ร้อยละ ${c.min} - ${c.max} &nbsp;&nbsp; หมายถึง &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${c.name}
                                 </div>
                             `).join('')}
@@ -363,6 +424,11 @@
             }
         });
 
+        function toThaiNum(val) {
+            if (val === null || val === undefined || val === '') return '';
+            return String(val).replace(/[0-9]/g, d => "๐๑๒๓๔๕๖๗๘๙"[d]);
+        }
+
         // ฟังก์ชันช่วยเรนเดอร์ตารางย่อย
         function renderTableRows(itemsList, startIndex) {
             let html = '';
@@ -371,19 +437,18 @@
             itemsList.forEach(item => {
                 if (item.type === 'main') {
                     html += `
-                    <tr>
-                        <td></td>
-                        <td class="font-bold text-left">${item.text}</td>
-                        <td></td><td></td><td></td><td></td><td></td><td></td>
+                    <tr style="background-color: #f9fafb;">
+                        <td colspan="8" class="font-bold text-left" style="padding: 4px 6px;">${item.text}</td>
                     </tr>
                     `;
                 } else {
                     currentItemIndex++;
                     html += `
                     <tr>
-                        <td class="text-center">${currentItemIndex}</td>
-                        <td class="text-left">${item.text}</td>
-                        <td></td><td></td><td></td><td></td><td></td><td></td>
+                        <td class="text-center">${toThaiNum(currentItemIndex)}</td>
+                        <td class="text-left" style="padding: 2px 6px;">${item.text}</td>
+                        <td></td><td></td><td></td><td></td><td></td>
+                        <td class="text-center"></td>
                     </tr>
                     `;
                 }

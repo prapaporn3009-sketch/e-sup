@@ -34,6 +34,7 @@ table.main-table th, table.main-table td { border: 1px solid #000; padding: 3px;
 table.main-table th { text-align: center; font-weight: bold; }
 
 .dotted { border-bottom: 1px dotted #000; display: inline-block; }
+.dotted-field { border-bottom: 1px dotted #000; display: inline-block; min-height: 20px; line-height: 1.2; vertical-align: baseline; font-weight: 500; }
 .line-blank { border-bottom: 1px dotted #000; height: 30px; margin-bottom: 5px; width: 100%; }
 
 .checkbox { display: inline-block; width: 16px; height: 16px; border: 1px solid #000; vertical-align: middle; margin-right: 5px; }

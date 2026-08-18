@@ -1,5 +1,5 @@
-const SPREADSHEET_ID = "1BxeMXtrNRCA8l-J9XiYSd7fKYTqxPkazMSWz7esaB-M";
-const UPLOAD_FOLDER_ID = "1oUI_oZ_HuV5BIvw_1yjwpT181gg7vLRu";
+const SPREADSHEET_ID = "1srqYo1RcoXabp9ZXCFnrm9fWagBnvYRDbPBsSactVUc";
+const UPLOAD_FOLDER_ID = "1CatiLpe5thDQQ5sP768jiHvYmlZUXAnc";
 
 // ตัวแปรส่วนกลางสำหรับบันทึกข้อมูล IP และ User-Agent ของคำขอ
 let currentRequestIP = "GAS_API";
@@ -25,13 +25,29 @@ function checkUsersSessionColumns(sheet) {
 function validateSession(ss, sessionToken) {
   if (!sessionToken || sessionToken === "") return { success: false, message: "กรุณาส่งกุญแจยืนยันตนเซสชัน (session_token)" };
   
+  const cleanToken = String(sessionToken).trim();
+  const cache = CacheService.getScriptCache();
+  
+  // 1. ตรวจสอบใน Fast Session Cache ก่อน เพื่อเลี่ยงการอ่าน Sheet
+  try {
+    const cachedUserJson = cache.get("sess_token_" + cleanToken);
+    if (cachedUserJson) {
+      const cachedUser = JSON.parse(cachedUserJson);
+      const expiry = Number(cachedUser.token_expiry || 0);
+      const now = new Date().getTime();
+      if (now <= expiry) {
+        return { success: true, user: cachedUser };
+      }
+    }
+  } catch(e) {}
+
   let users = getSheetData(ss, "users", true);
-  let user = users.find(u => u.session_token && String(u.session_token).trim() === String(sessionToken).trim());
+  let user = users.find(u => u.session_token && String(u.session_token).trim() === cleanToken);
   
   // หากไม่พบใน Cache อาจเป็นเพราะเพิ่งล็อกอิน ให้ลองดึงแบบไม่ใช้ Cache จาก Sheet อีกครั้งเพื่อความแม่นยำ
   if (!user) {
     users = getSheetData(ss, "users", false);
-    user = users.find(u => u.session_token && String(u.session_token).trim() === String(sessionToken).trim());
+    user = users.find(u => u.session_token && String(u.session_token).trim() === cleanToken);
   }
   
   if (!user) {
@@ -44,7 +60,7 @@ function validateSession(ss, sessionToken) {
     return { success: false, message: "เซสชันหมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่" };
   }
   
-  // ยืดอายุของเซสชันชั่วคราวออกไปอีก 2 ชั่วโมง เฉพาะเมื่อเวลาเหลือน้อยกว่า 30 นาที เพื่อประหยัดเวลาการเขียน Sheet
+  // ยืดอายุเซสชันชั่วคราวเมื่อเหลือน้อยกว่า 30 นาที
   const remaining = expiry - now;
   if (remaining < 30 * 60 * 1000) {
     const sheet = ss.getSheetByName("users");
@@ -54,12 +70,21 @@ function validateSession(ss, sessionToken) {
     for (let i = 1; i < vals.length; i++) {
       if (String(vals[i][0]) === String(user.id)) {
         sheet.getRange(i + 1, 13).setValue(String(newExpiry));
+        user.token_expiry = String(newExpiry);
         clearSheetCache("users");
         break;
       }
     }
   }
   
+  // บันทึกลง Fast Session Cache (หมดอายุตามเวลาโทเค็นหรือสูงสุด 2 ชั่วโมง)
+  try {
+    const ttlSeconds = Math.min(Math.floor((expiry - now) / 1000), 7200);
+    if (ttlSeconds > 0) {
+      cache.put("sess_token_" + cleanToken, JSON.stringify(user), ttlSeconds);
+    }
+  } catch(e) {}
+
   return { success: true, user: user };
 }
 
@@ -166,6 +191,10 @@ function doPost(e) {
         result = saveData(ss, input);
         clearSheetCache("supervision_records");
         break;
+      case "updateReport":
+        result = updateReport(ss, input);
+        clearSheetCache("supervision_records");
+        break;
       case "saveConfig":
         result = saveConfig(ss, input);
         clearSheetCache("templates");
@@ -246,23 +275,57 @@ function clearSheetCache(sheetName) {
   try {
     const cache = CacheService.getScriptCache();
     if (sheetName) {
-      cache.remove("sheet_cache_" + sheetName);
+      const countKey = "sheet_cache_count_" + sheetName;
+      const countStr = cache.get(countKey);
+      if (countStr) {
+        const count = parseInt(countStr, 10);
+        const keysToRemove = [countKey];
+        for (let i = 0; i < count; i++) {
+          keysToRemove.push("sheet_cache_" + sheetName + "_" + i);
+        }
+        cache.removeAll(keysToRemove);
+      } else {
+        cache.remove("sheet_cache_" + sheetName);
+      }
     } else {
       ["settings", "users", "terms", "templates", "supervision_records", "assignments"].forEach(s => {
-        cache.remove("sheet_cache_" + s);
+        clearSheetCache(s);
       });
     }
   } catch(e) {}
 }
 
-// === ฟังก์ชันช่วยเหลือ: แปลงแผ่นงานเป็น Array ของ Object พร้อมระบบ Caching ===
+// === ฟังก์ชันช่วยเหลือ: แปลงแผ่นงานเป็น Array ของ Object พร้อมระบบ Chunked Caching ===
 function getSheetData(ss, sheetName, useCache = true) {
   if (useCache) {
     try {
       const cache = CacheService.getScriptCache();
-      const cached = cache.get("sheet_cache_" + sheetName);
-      if (cached) {
-        return JSON.parse(cached);
+      const countStr = cache.get("sheet_cache_count_" + sheetName);
+      if (countStr) {
+        const count = parseInt(countStr, 10);
+        const keys = [];
+        for (let i = 0; i < count; i++) {
+          keys.push("sheet_cache_" + sheetName + "_" + i);
+        }
+        const cachedChunks = cache.getAll(keys);
+        let fullStr = "";
+        for (let i = 0; i < count; i++) {
+          const chunkKey = "sheet_cache_" + sheetName + "_" + i;
+          if (cachedChunks[chunkKey]) {
+            fullStr += cachedChunks[chunkKey];
+          } else {
+            fullStr = null;
+            break;
+          }
+        }
+        if (fullStr) {
+          return JSON.parse(fullStr);
+        }
+      }
+      
+      const singleCached = cache.get("sheet_cache_" + sheetName);
+      if (singleCached) {
+        return JSON.parse(singleCached);
       }
     } catch(e) {}
   }
@@ -275,22 +338,101 @@ function getSheetData(ss, sheetName, useCache = true) {
   
   const headers = values[0];
   const data = [];
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    const obj = {};
-    headers.forEach((header, index) => {
-      obj[header] = row[index];
-    });
-    data.push(obj);
+  
+  if (sheetName === "supervision_records") {
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      let rawDate = row[9];
+      let formattedDate = (rawDate instanceof Date) ? Utilities.formatDate(rawDate, "GMT+7", "yyyy-MM-dd") : String(rawDate || "").trim();
+      
+      let rawTs = row[28];
+      let formattedTs = (rawTs instanceof Date) ? Utilities.formatDate(rawTs, "GMT+7", "yyyy-MM-dd HH:mm:ss") : String(rawTs || "").trim();
+      
+      const teacherIdStr = String(row[4] !== undefined ? row[4] : "").trim();
+      const teacherPosStr = String(row[5] !== undefined ? row[5] : "").trim();
+      const classStr = String(row[8] !== undefined ? row[8] : "").trim();
+      const obsIdStr = String(row[13] !== undefined ? row[13] : "").trim();
+      const obsPosStr = String(row[14] !== undefined ? row[14] : "").trim();
+      const scoresStr = String(row[15] !== undefined ? row[15] : "").trim();
+      const signTStr = String(row[22] !== undefined ? row[22] : "").trim();
+      const signOStr = String(row[23] !== undefined ? row[23] : "").trim();
+      const file1Str = String(row[24] !== undefined ? row[24] : "").trim();
+      const file2Str = String(row[25] !== undefined ? row[25] : "").trim();
+      const file3Str = String(row[26] !== undefined ? row[26] : "").trim();
+      const file4Str = String(row[27] !== undefined ? row[27] : "").trim();
+      
+      data.push({
+        id: String(row[0] !== undefined ? row[0] : "").trim(),
+        term: String(row[1] !== undefined ? row[1] : "").trim(),
+        year: String(row[2] !== undefined ? row[2] : "").trim(),
+        teacher: String(row[3] !== undefined ? row[3] : "").trim(),
+        teacher_id: teacherIdStr,
+        teacherId: teacherIdStr,
+        teacher_position: teacherPosStr,
+        teacherPosition: teacherPosStr,
+        department: String(row[6] !== undefined ? row[6] : "").trim(),
+        subject: String(row[7] !== undefined ? row[7] : "").trim(),
+        class: classStr,
+        className: classStr,
+        date: formattedDate,
+        occurrence: String(row[10] !== undefined ? row[10] : "").trim(),
+        time: String(row[11] !== undefined ? row[11] : "").trim(),
+        observer: String(row[12] !== undefined ? row[12] : "").trim(),
+        observer_id: obsIdStr,
+        observerId: obsIdStr,
+        observer_position: obsPosStr,
+        observerPosition: obsPosStr,
+        scores_json: scoresStr,
+        scores: scoresStr,
+        total: row[16] !== undefined ? String(row[16]) : "0",
+        percent: row[17] !== undefined ? String(row[17]) : "0",
+        level: String(row[18] !== undefined ? row[18] : "").trim(),
+        strengths: String(row[19] !== undefined ? row[19] : "").trim(),
+        improvements: String(row[20] !== undefined ? row[20] : "").trim(),
+        suggestions: String(row[21] !== undefined ? row[21] : "").trim(),
+        sign_teacher: signTStr,
+        signTeacher: signTStr,
+        sign_observer: signOStr,
+        signObserver: signOStr,
+        file_url1: file1Str,
+        fileUrl1: file1Str,
+        file_url2: file2Str,
+        fileUrl2: file2Str,
+        file_url3: file3Str,
+        fileUrl3: file3Str,
+        file_url4: file4Str,
+        fileUrl4: file4Str,
+        timestamp: formattedTs
+      });
+    }
+  } else {
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      const obj = {};
+      headers.forEach((header, index) => {
+        obj[header] = row[index];
+      });
+      data.push(obj);
+    }
   }
 
   if (useCache) {
     try {
       const cache = CacheService.getScriptCache();
       const str = JSON.stringify(data);
-      if (str.length < 90000) { // Limit for CacheService 100KB per item
-        cache.put("sheet_cache_" + sheetName, str, 600); // 10 minutes cache
+      const chunkSize = 80000;
+      const chunks = [];
+      for (let i = 0; i < str.length; i += chunkSize) {
+        chunks.push(str.substring(i, i + chunkSize));
       }
+      
+      const cacheMap = {};
+      cacheMap["sheet_cache_count_" + sheetName] = String(chunks.length);
+      chunks.forEach((chunk, index) => {
+        cacheMap["sheet_cache_" + sheetName + "_" + index] = chunk;
+      });
+      
+      cache.putAll(cacheMap, 1800);
     } catch(e) {}
   }
 
@@ -450,25 +592,45 @@ function getDashboardStats(ss) {
 }
 
 function getDashboardAllData(ss) {
-  const statsRes = getDashboardStats(ss);
+  const records = getSheetData(ss, "supervision_records");
+  const users = getSheetData(ss, "users");
   const settingsRes = getSettings(ss);
   const terms = getSheetData(ss, "terms");
   const assignments = getSheetData(ss, "assignments");
 
-  let statsData = null;
-  let settingsData = null;
+  const totalEvaluations = records.length;
+  const totalTeachers = users.filter(u => u.role === "teacher").length;
+  
+  let sumScore = 0;
+  records.forEach(r => {
+    sumScore += Number(r.percent || 0);
+  });
+  const avgScore = totalEvaluations > 0 ? (sumScore / totalEvaluations).toFixed(1) : 0;
+  
+  const levelStats = { "ดีมาก": 0, "ดี": 0, "พอใช้": 0, "ปรับปรุง": 0 };
+  records.forEach(r => {
+    const l = String(r.level).trim();
+    if (levelStats.hasOwnProperty(l)) {
+      levelStats[l]++;
+    }
+  });
+
+  let rawSettings = {};
   try {
-    statsData = JSON.parse(statsRes.getContent()).data;
-  } catch(e) {}
-  try {
-    settingsData = JSON.parse(settingsRes.getContent()).data;
+    const parsed = JSON.parse(settingsRes.getContent());
+    if (parsed && parsed.data) rawSettings = parsed.data;
   } catch(e) {}
 
   return jsonResponse({
     success: true,
     data: {
-      stats: statsData,
-      settings: settingsData,
+      stats: {
+        total_evaluations: totalEvaluations,
+        total_teachers: totalTeachers,
+        avg_score: avgScore,
+        levels: levelStats
+      },
+      settings: rawSettings,
       terms: terms,
       assignments: assignments
     }
@@ -672,6 +834,98 @@ function saveData(ss, input) {
   writeLog(ss, input.observerId || "", "save_data", "supervision_records", id, `บันทึกข้อมูลการนิเทศครู: ${input.teacher}`);
   
   return jsonResponse({ success: true, message: "บันทึกข้อมูลนิเทศเรียบร้อยแล้ว" });
+}
+
+function updateReport(ss, input) {
+  if (!input.id) {
+    return jsonResponse({ success: false, message: "ไม่พบรหัสข้อมูลการนิเทศ (ID)" });
+  }
+
+  const recordSheet = ss.getSheetByName("supervision_records");
+  if (!recordSheet) {
+    return jsonResponse({ success: false, message: "ไม่พบแผ่นงาน supervision_records" });
+  }
+
+  const range = recordSheet.getDataRange();
+  const values = range.getValues();
+  let rowIndex = -1;
+  let existingRow = null;
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][0]).trim() === String(input.id).trim()) {
+      rowIndex = i + 1;
+      existingRow = values[i];
+      break;
+    }
+  }
+
+  if (rowIndex === -1 || !existingRow) {
+    return jsonResponse({ success: false, message: `ไม่พบข้อมูลการนิเทศที่มี ID: ${input.id}` });
+  }
+
+  // อัปโหลดรูปแนบฝั่ง Google Drive (ถ้ามีการส่ง base64 มาใหม่ ให้บันทึกใหม่ หากไม่มีให้ใช้รูปเดิม)
+  const imgUrl1 = (input.attachedFileBase64_1 && String(input.attachedFileBase64_1).indexOf('data:image/') === 0)
+    ? saveBase64ImageToDrive(input.attachedFileBase64_1, `img1_${input.teacher}_${input.id}.png`)
+    : (existingRow[24] || "");
+
+  const imgUrl2 = (input.attachedFileBase64_2 && String(input.attachedFileBase64_2).indexOf('data:image/') === 0)
+    ? saveBase64ImageToDrive(input.attachedFileBase64_2, `img2_${input.teacher}_${input.id}.png`)
+    : (existingRow[25] || "");
+
+  const imgUrl3 = (input.attachedFileBase64_3 && String(input.attachedFileBase64_3).indexOf('data:image/') === 0)
+    ? saveBase64ImageToDrive(input.attachedFileBase64_3, `img3_${input.teacher}_${input.id}.png`)
+    : (existingRow[26] || "");
+
+  const imgUrl4 = (input.attachedFileBase64_4 && String(input.attachedFileBase64_4).indexOf('data:image/') === 0)
+    ? saveBase64ImageToDrive(input.attachedFileBase64_4, `img4_${input.teacher}_${input.id}.png`)
+    : (existingRow[27] || "");
+
+  // อัปโหลดรูปลายเซ็น (ถ้ามีการวาดลายเซ็นใหม่เป็น base64 ให้บันทึกใหม่ หากเป็น URL หรือว่าง ให้ใช้ลายเซ็นเดิม)
+  const signTeacherUrl = (input.signTeacher && String(input.signTeacher).indexOf('data:image/') === 0)
+    ? saveBase64ImageToDrive(input.signTeacher, `sig_teacher_${input.teacher}_${input.id}.png`)
+    : (input.signTeacher && String(input.signTeacher).indexOf('http') === 0 ? input.signTeacher : (existingRow[22] || ""));
+
+  const signObserverUrl = (input.signObserver && String(input.signObserver).indexOf('data:image/') === 0)
+    ? saveBase64ImageToDrive(input.signObserver, `sig_observer_${input.observer}_${input.id}.png`)
+    : (input.signObserver && String(input.signObserver).indexOf('http') === 0 ? input.signObserver : (existingRow[23] || ""));
+
+  const updatedRow = [
+    input.id,
+    input.term !== undefined ? input.term : existingRow[1],
+    input.year !== undefined ? input.year : existingRow[2],
+    input.teacher !== undefined ? input.teacher : existingRow[3],
+    input.teacherId !== undefined ? input.teacherId : existingRow[4],
+    input.teacherPosition || existingRow[5] || "-",
+    input.department !== undefined ? input.department : existingRow[6],
+    input.subject !== undefined ? input.subject : existingRow[7],
+    input.className !== undefined ? input.className : existingRow[8],
+    input.date !== undefined ? input.date : existingRow[9],
+    input.occurrence || existingRow[10] || "-",
+    input.time || existingRow[11] || "-",
+    input.observer !== undefined ? input.observer : existingRow[12],
+    input.observerId !== undefined ? input.observerId : existingRow[13],
+    input.observerPosition || existingRow[14] || "-",
+    input.scores ? JSON.stringify(input.scores) : existingRow[15],
+    input.total !== undefined ? Number(input.total) : existingRow[16],
+    input.percent !== undefined ? Number(input.percent) : existingRow[17],
+    input.level || existingRow[18] || "-",
+    input.strengths !== undefined ? input.strengths : existingRow[19],
+    input.improvements !== undefined ? input.improvements : existingRow[20],
+    input.suggestions !== undefined ? input.suggestions : existingRow[21],
+    signTeacherUrl,
+    signObserverUrl,
+    imgUrl1,
+    imgUrl2,
+    imgUrl3,
+    imgUrl4,
+    Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd HH:mm:ss")
+  ];
+
+  recordSheet.getRange(rowIndex, 1, 1, updatedRow.length).setValues([updatedRow]);
+
+  writeLog(ss, input.observerId || "", "update_data", "supervision_records", input.id, `แก้ไขบันทึกการนิเทศครู: ${input.teacher}`);
+
+  return jsonResponse({ success: true, message: "อัปเดตข้อมูลบันทึกการนิเทศเรียบร้อยแล้ว" });
 }
 function deleteReport(ss, id) {
   const sheet = ss.getSheetByName("supervision_records");
