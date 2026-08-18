@@ -737,9 +737,6 @@ function saveConfigOriginal() {
                 return;
             }
             
-            const formData = new FormData();
-            formData.append('csv_file', file);
-            
             Swal.fire({
                 title: 'กำลังนำเข้าข้อมูล...',
                 text: 'กรุณารอสักครู่ ระบบกำลังประมวลผลไฟล์ CSV',
@@ -747,79 +744,130 @@ function saveConfigOriginal() {
                 didOpen: () => Swal.showLoading()
             });
             
-            fetch('../api/import_users.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.json())
-            .then(res => {
-                event.target.value = '';
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const buffer = e.target.result;
+                let text = '';
                 
-                let detailsHtml = '';
-                if (res.details && res.details.length > 0) {
-                    detailsHtml = `
-                        <div class="text-left mt-4 max-h-60 overflow-y-auto text-xs border border-gray-200 rounded p-2 bg-gray-50 font-sans">
-                            <table class="w-full text-left border-collapse">
-                                <thead>
-                                    <tr class="border-b border-gray-300">
-                                        <th class="py-1 font-bold w-12 text-center">แถว</th>
-                                        <th class="py-1 font-bold">Username</th>
-                                        <th class="py-1 font-bold">สถานะ</th>
-                                        <th class="py-1 font-bold">รายละเอียด</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
-                    res.details.forEach(item => {
-                        let badge = '';
-                        if (item.status === 'success') {
-                            badge = '<span class="text-green-600 font-bold"><i class="fas fa-check-circle mr-1"></i>สำเร็จ</span>';
-                        } else if (item.status === 'skip') {
-                            badge = '<span class="text-yellow-600 font-bold"><i class="fas fa-exclamation-triangle mr-1"></i>ข้าม</span>';
-                        } else {
-                            badge = '<span class="text-red-600 font-bold"><i class="fas fa-times-circle mr-1"></i>ล้มเหลว</span>';
+                try {
+                    const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+                    text = utf8Decoder.decode(buffer);
+                } catch (err) {
+                    try {
+                        const thaiDecoder = new TextDecoder('windows-874');
+                        text = thaiDecoder.decode(buffer);
+                    } catch (e2) {
+                        try {
+                            const tisDecoder = new TextDecoder('tis-620');
+                            text = tisDecoder.decode(buffer);
+                        } catch (e3) {
+                            text = new TextDecoder('utf-8').decode(buffer);
                         }
-                        detailsHtml += `
-                            <tr class="border-b border-gray-100 hover:bg-gray-100 transition">
-                                <td class="py-1 text-gray-500 text-center">${item.row}</td>
-                                <td class="py-1 font-semibold text-gray-800">${item.username}</td>
-                                <td class="py-1">${badge}</td>
-                                <td class="py-1 text-gray-500">${item.reason}</td>
-                            </tr>
-                        `;
-                    });
-                    detailsHtml += `
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
+                    }
+                }
+                
+                if (text.includes('\uFFFD')) {
+                    try {
+                        const thaiDecoder = new TextDecoder('windows-874');
+                        const altText = thaiDecoder.decode(buffer);
+                        if (!altText.includes('\uFFFD')) text = altText;
+                    } catch (e) {}
                 }
 
-                if (res.success) {
-                    Swal.fire({
-                        title: 'นำเข้าข้อมูลเรียบร้อย',
-                        html: `<p class="text-sm font-medium text-gray-700">${res.message}</p>${detailsHtml}`,
-                        icon: 'success',
-                        confirmButtonText: 'ตกลง',
-                        customClass: {
-                            popup: 'swal2-large-popup'
+                let parsedUsers = [];
+                try {
+                    const lines = text.split(/\r?\n/);
+                    if (lines.length <= 1) throw new Error('ไฟล์ว่างเปล่าหรือไม่มีข้อมูล');
+                    
+                    function parseCSVRow(rowStr) {
+                        const res = [];
+                        let cur = '';
+                        let inQuote = false;
+                        for (let i = 0; i < rowStr.length; i++) {
+                            const c = rowStr[i];
+                            if (c === '"') {
+                                if (inQuote && rowStr[i + 1] === '"') {
+                                    cur += '"';
+                                    i++;
+                                } else {
+                                    inQuote = !inQuote;
+                                }
+                            } else if (c === ',' && !inQuote) {
+                                res.push(cur.trim());
+                                cur = '';
+                            } else {
+                                cur += c;
+                            }
                         }
-                    }).then(() => {
-                        loadUsers();
-                    });
-                } else {
-                    Swal.fire({
-                        title: 'ไม่สามารถนำเข้าข้อมูลได้',
-                        html: `<p class="text-sm font-medium text-red-600">${res.message}</p>${detailsHtml}`,
-                        icon: 'warning',
-                        confirmButtonText: 'ตกลง'
-                    });
+                        res.push(cur.trim());
+                        return res;
+                    }
+
+                    const headers = parseCSVRow(lines[0]).map(h => h.trim().replace(/[\uFEFF\r\n"]/g, ''));
+                    
+                    for (let i = 1; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line) continue;
+                        
+                        const cols = parseCSVRow(line);
+                        const userObj = {};
+                        
+                        headers.forEach((header, idx) => {
+                            let key = header.toLowerCase();
+                            if (key === 'displayname' || key === 'ชื่อ-สกุล' || key === 'ชื่อผู้ใช้งาน' || key === 'ชื่อ') key = 'display_name';
+                            if (key === 'อีเมล') key = 'email';
+                            if (key === 'บทบาท' || key === 'สิทธิ์') key = 'role';
+                            if (key === 'ตำแหน่ง') key = 'position';
+                            if (key === 'วิทยฐานะ') key = 'academic_standing';
+                            if (key === 'กลุ่มสาระ' || key === 'กลุ่มสาระการเรียนรู้' || key === 'ฝ่าย') key = 'department';
+                            
+                            userObj[key] = (cols[idx] || '').replace(/^"|"$/g, '').trim();
+                        });
+                        
+                        if (userObj.username && userObj.password) {
+                            parsedUsers.push(userObj);
+                        }
+                    }
+                } catch(err) {
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์ CSV ได้: ' + err.message, 'error');
+                    event.target.value = '';
+                    return;
                 }
-            })
-            .catch(err => {
+                
+                if (parsedUsers.length === 0) {
+                    Swal.fire('ข้อผิดพลาด', 'ไม่พบข้อมูลผู้ใช้ที่ถูกต้องในไฟล์ (ต้องมีคอลัมน์ username และ password)', 'warning');
+                    event.target.value = '';
+                    return;
+                }
+
+                fetch('../api/import_users.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ users: parsedUsers })
+                })
+                .then(res => res.json())
+                .then(res => {
+                    event.target.value = '';
+                    
+                    if (res.success) {
+                        Swal.fire('นำเข้าข้อมูลเรียบร้อย', res.message, 'success').then(() => {
+                            loadUsers();
+                        });
+                    } else {
+                        Swal.fire('ข้อผิดพลาด', res.message, 'error');
+                    }
+                })
+                .catch(err => {
+                    event.target.value = '';
+                    Swal.fire('ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: ' + err.message, 'error');
+                });
+            };
+            
+            reader.onerror = function() {
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์ได้', 'error');
                 event.target.value = '';
-                Swal.fire('ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: ' + err.message, 'error');
-            });
+            };
+            
         }
 
         let usersPaginator = null;

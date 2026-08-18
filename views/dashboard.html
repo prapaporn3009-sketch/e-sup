@@ -1416,26 +1416,87 @@ function saveConfigOriginal() {
             
             const reader = new FileReader();
             reader.onload = function(e) {
-                const text = e.target.result;
+                const buffer = e.target.result;
+                let text = '';
+                
+                // ตรวจจับ Encoding อัตโนมัติ: UTF-8 หรือ Windows-874 (TIS-620 จาก Microsoft Excel)
+                try {
+                    const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+                    text = utf8Decoder.decode(buffer);
+                } catch (err) {
+                    try {
+                        const thaiDecoder = new TextDecoder('windows-874');
+                        text = thaiDecoder.decode(buffer);
+                    } catch (e2) {
+                        try {
+                            const tisDecoder = new TextDecoder('tis-620');
+                            text = tisDecoder.decode(buffer);
+                        } catch (e3) {
+                            text = new TextDecoder('utf-8').decode(buffer);
+                        }
+                    }
+                }
+                
+                // หาก UTF-8 decode แล้วยังมีตัวอักขระเสีย ให้ลองถอดด้วย windows-874 อีกครั้ง
+                if (text.includes('\uFFFD')) {
+                    try {
+                        const thaiDecoder = new TextDecoder('windows-874');
+                        const altText = thaiDecoder.decode(buffer);
+                        if (!altText.includes('\uFFFD')) text = altText;
+                    } catch (e) {}
+                }
+
                 let parsedUsers = [];
                 try {
+                    // แยกบรรทัด
                     const lines = text.split(/\r?\n/);
                     if (lines.length <= 1) throw new Error('ไฟล์ว่างเปล่าหรือไม่มีข้อมูล');
                     
+                    // ฟังก์ชันแยกคอลัมน์ CSV รองรับเครื่องหมายคำพูด (Quote)
+                    function parseCSVRow(rowStr) {
+                        const res = [];
+                        let cur = '';
+                        let inQuote = false;
+                        for (let i = 0; i < rowStr.length; i++) {
+                            const c = rowStr[i];
+                            if (c === '"') {
+                                if (inQuote && rowStr[i + 1] === '"') {
+                                    cur += '"';
+                                    i++;
+                                } else {
+                                    inQuote = !inQuote;
+                                }
+                            } else if (c === ',' && !inQuote) {
+                                res.push(cur.trim());
+                                cur = '';
+                            } else {
+                                cur += c;
+                            }
+                        }
+                        res.push(cur.trim());
+                        return res;
+                    }
+
                     // ล้างอักขระพิเศษ (เช่น BOM)
-                    const headers = lines[0].split(',').map(h => h.trim().replace(/[\uFEFF\r\n]/g, ''));
+                    const headers = parseCSVRow(lines[0]).map(h => h.trim().replace(/[\uFEFF\r\n"]/g, ''));
                     
                     for (let i = 1; i < lines.length; i++) {
                         const line = lines[i].trim();
                         if (!line) continue;
                         
-                        const cols = line.split(',').map(c => c.trim());
+                        const cols = parseCSVRow(line);
                         const userObj = {};
                         
                         headers.forEach((header, idx) => {
                             let key = header.toLowerCase();
-                            if (key === 'displayname') key = 'display_name';
-                            userObj[key] = cols[idx] || '';
+                            if (key === 'displayname' || key === 'ชื่อ-สกุล' || key === 'ชื่อผู้ใช้งาน' || key === 'ชื่อ') key = 'display_name';
+                            if (key === 'อีเมล') key = 'email';
+                            if (key === 'บทบาท' || key === 'สิทธิ์') key = 'role';
+                            if (key === 'ตำแหน่ง') key = 'position';
+                            if (key === 'วิทยฐานะ') key = 'academic_standing';
+                            if (key === 'กลุ่มสาระ' || key === 'กลุ่มสาระการเรียนรู้' || key === 'ฝ่าย') key = 'department';
+                            
+                            userObj[key] = (cols[idx] || '').replace(/^"|"$/g, '').trim();
                         });
                         
                         if (userObj.username && userObj.password) {
@@ -1448,6 +1509,12 @@ function saveConfigOriginal() {
                     return;
                 }
                 
+                if (parsedUsers.length === 0) {
+                    Swal.fire('ข้อผิดพลาด', 'ไม่พบข้อมูลผู้ใช้ที่ถูกต้องในไฟล์ (ต้องมีคอลัมน์ username และ password)', 'warning');
+                    event.target.value = '';
+                    return;
+                }
+
                 fetch('../api/import_users.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1476,8 +1543,8 @@ function saveConfigOriginal() {
                 event.target.value = '';
             };
             
-            // อ่านไฟล์แบบ UTF-8 รองรับภาษาไทย
-            reader.readAsText(file, 'UTF-8');
+            // อ่านแบบ ArrayBuffer เพื่อตรวจจับ UTF-8 / Windows-874 ภาษาไทยอัตโนมัติ
+            reader.readAsArrayBuffer(file);
         }
 
         let usersPaginator = null;
